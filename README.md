@@ -52,8 +52,8 @@ works out of the box without any extra system settings.
 ## Installation
 
 Download the latest release from the
-[GitHub releases page](https://github.com/atty303/konaste-linux/releases) and
-install it using the following command:
+[GitHub releases page](https://github.com/atty303/konamate/releases) and install
+it using the following command:
 
 ```bash
 cp ~/Downloads/konaste-x86_64-unknown-linux-gnu ~/.local/bin/konaste
@@ -63,7 +63,7 @@ chmod +x ~/.local/bin/konaste
 or install it with [ubi](https://github.com/houseabsolute/ubi).
 
 ```bash
-ubi -p atty303/konaste-linux -e konaste -i ~/.local/bin
+ubi -p atty303/konamate -e konaste -i ~/.local/bin
 ```
 
 ## Minimal steps to launch the games

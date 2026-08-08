@@ -42,7 +42,7 @@ const cmd = new Command()
     "upgrade",
     new UpgradeCommand({
       provider: [
-        new GithubProvider({ repository: "atty303/konaste-linux" }),
+        new GithubProvider({ repository: "atty303/konamate" }),
       ],
     }).action(() => {
       // Upgrade command is not supported for single binary distribution
