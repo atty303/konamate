@@ -448,6 +448,34 @@ If you're not using the compiled binary, the tool cannot determine its own
 execution path. You must specify the `--self-path` option when running the
 `associate` command.
 
+### Live SDVX end-to-end test
+
+The live test exercises the existing Playwright login flow, obtains a real SDVX
+launch URL, and starts the installed game through umu/Proton. It is interactive,
+host-dependent, and intentionally separate from `mise run check` and CI.
+
+Use an existing SDVX Wine prefix, but pass it explicitly so the test does not
+read or modify `~/.config/konaste`. Playwright browser storage and the generated
+konaste configuration are isolated in a temporary directory. The existing
+passkey is read from the keyring.
+
+```bash
+mise run test:e2e:linux:sdvx -- \
+  --wine-prefix /path/to/sdvx-prefix \
+  --proton-path GE-Proton10-9
+```
+
+Use `--game-env NAME=VALUE` for additional game environment variables. Browser,
+audio sink, passkey entry, and result path can be selected with `--browser`,
+`--pulse-sink`, `--passkey-service`, `--passkey-name`, and `--output`.
+
+The test asks for confirmation before accessing the account or launching the
+game. Proton and SDVX may update the selected prefix, shader caches, and game
+settings. After the game exits, confirm the title screen, audio, and physical
+controller behavior. Sanitized results are written under
+`${XDG_CACHE_HOME:-~/.cache}/konaste/e2e/` by default; launch URLs,
+authorization tokens, and passkey contents are not recorded.
+
 ## Verified Configurations
 
 <details>

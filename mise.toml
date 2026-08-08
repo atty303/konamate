@@ -18,9 +18,15 @@ description = "Run all checks"
 run = [
     "deno lint",
     "deno fmt --check",
-    "deno check",
+    "deno check src/main.ts tests/e2e/sdvx.ts tests/e2e/sensitive_test.ts",
+    "deno test",
     "pkl eval hk.pkl >/dev/null",
 ]
+
+[tasks."test:e2e:linux:sdvx"]
+description = "Run the live SDVX launch flow"
+depends = ["build"]
+run = "deno run -A tests/e2e/sdvx.ts"
 
 [tasks.build]
 description = "Build the CLI binary"
