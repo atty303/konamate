@@ -7,7 +7,7 @@ import { defaultGames, GameDefinition } from "./games.ts";
 import { gameCommand } from "./command.ts";
 import { configDir } from "./config.ts";
 import $ from "@david/dax";
-import * as path from "jsr:@std/path";
+import * as path from "@std/path";
 import versionJson from "../version.json" with { type: "json" };
 import { browserCommand } from "./browser.ts";
 import { controllerCommand } from "./controller.ts";

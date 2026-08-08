@@ -1,5 +1,5 @@
-import * as path from "jsr:@std/path";
-import * as pathWin from "jsr:@std/path/windows";
+import * as path from "@std/path";
+import * as pathWin from "@std/path/windows";
 import xdg from "@404wolf/xdg-portable";
 import { colors } from "@cliffy/ansi/colors";
 import { Command } from "@cliffy/command";

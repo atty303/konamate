@@ -1,4 +1,4 @@
-import * as path from "jsr:@std/path";
+import * as path from "@std/path";
 import xdg from "@404wolf/xdg-portable";
 import $ from "@david/dax";
 import { GameProfile } from "./games.ts";

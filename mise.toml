@@ -1,3 +1,6 @@
+[settings]
+lockfile = true
+
 [tools]
 deno = "latest"
 hk = "latest"
@@ -5,8 +8,9 @@ pkl = "latest"
 
 [tasks.install-cli]
 description = "Install the CLI"
+usage = 'flag "--root <root>"'
 run = [
-    "deno install -A --global --force --config deno.jsonc --name konaste --root {{option(name='root', default='~/.deno')}} src/main.ts",
+    "deno install -A --global --force --config deno.jsonc --name konaste --root \"${usage_root:-$HOME/.deno}\" src/main.ts",
 ]
 
 [tasks.check]
@@ -15,19 +19,22 @@ run = [
     "deno lint",
     "deno fmt --check",
     "deno check",
+    "pkl eval hk.pkl >/dev/null",
 ]
 
 [tasks.build]
 description = "Build the CLI binary"
+usage = 'flag "--arch <arch>" default="x86_64-unknown-linux-gnu"'
 run = [
-    "deno compile -A --target {{option(name='arch', default='x86_64-unknown-linux-gnu')}} -o dist/konaste-{{option(name='arch', default='x86_64-unknown-linux-gnu')}} src/main.ts",
+    "deno compile -A --target ${usage_arch?} -o dist/konaste-${usage_arch?} src/main.ts",
 ]
 
 [tasks.prepare-release]
 description = "Prepare for release"
+usage = 'flag "--version <version>"'
 run = [
     "deno install",
-    "echo '\"{{option(name='version') }}\"' > version.json",
-    "mise build --arch=x86_64-unknown-linux-gnu",
-    "mise build --arch=aarch64-unknown-linux-gnu",
+    "printf '\"%s\"\\n' \"${usage_version:?}\" > version.json",
+    "mise run build --arch=x86_64-unknown-linux-gnu",
+    "mise run build --arch=aarch64-unknown-linux-gnu",
 ]

@@ -1,11 +1,11 @@
-amends "package://github.com/jdx/hk/releases/download/v1.10.7/hk@1.10.7#/Config.pkl"
-import "package://github.com/jdx/hk/releases/download/v1.10.7/hk@1.10.7#/Builtins.pkl"
+amends "package://github.com/jdx/hk/releases/download/v1.54.1/hk@1.54.1#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.54.1/hk@1.54.1#/Builtins.pkl"
 
 local linters = new Mapping<String, Step> {
     ["deno"] = Builtins.deno
     ["deno_check"] = Builtins.deno_check
     ["deno_lint"] {
-        glob = List("*.js", "*,jsx", "*,ts", "*,tsx")
+        glob = List("**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx")
         stage = glob
         check = "deno lint {{ files }}"
         fix = "deno lint --fix {{ files }}"
