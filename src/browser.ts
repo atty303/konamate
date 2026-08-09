@@ -268,6 +268,7 @@ export async function obtainLaunchUrl(
 function launchCommand() {
   return new Command()
     .description("Perform a login and launch the game")
+    .hidden()
     .option("--browser <exe:file>", "The browser executable to use")
     .option(
       "-u, --url <url:string>",

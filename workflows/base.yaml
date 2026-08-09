@@ -3,7 +3,7 @@ version: "0.5"
 # Requirements:
 # - Bazzite Desktop (KDE Plasma)
 # - ubi -i ~/.local/bin -p F1bonacc1/process-compose
-# - konaste-linux configured
+# - konamate configured
 # - OBS Studio configured with WebSocket
 # - ubi -i ~/.local/bin -p grigio/obs-cmd
 # - twitch-cli configured : brew install twitch-cli
@@ -12,7 +12,7 @@ log_level: debug
 log_configuration:
   disable_json: true
   add_timestamp: true
-log_location: /tmp/konaste.log
+log_location: /tmp/konamate.log
 
 disable_env_expansion: true
 shell:
@@ -27,19 +27,15 @@ environment:
   # - TWITCH_STREAM_TAGS=LinuxGaming,bemani
   # - TWITCH_USER_DESCRIPTION=
 
-  - BROWSER_EXE=/var/lib/flatpak/exports/bin/com.google.Chrome
   - OBS_WEBSOCKET=localhost:4455
-  - START_STREAMING_FILE=/tmp/konaste-start-streaming
+  - START_STREAMING_FILE=/tmp/konamate-start-streaming
 
 processes:
   game:
     environment:
     command: |
-      let game = (konaste ls --json | from json | where id == $env.GAME)
-      let run_url = (konaste browser launch --browser $env.BROWSER_EXE --url ($game | get loginUrl).0 --scheme ($game | get urlScheme).0)
-
       vkcube --c 1
-      konaste $env.GAME run $run_url
+      konamate $env.GAME run
     availability:
       # Exit the whole processes when the game ends
       exit_on_end: true
@@ -79,7 +75,7 @@ processes:
       /home/linuxbrew/.linuxbrew/bin/twitch api patch /channels -q $"broadcaster_id=($env.TWITCH_BROADCASTER_ID)" -q $"game_id=($env.TWITCH_GAME_ID)" -q $"title=($env.TWITCH_STREAM_TITLE)" ...$tags | complete
       # twitch api put /users -q description=$env.TWITCH_USER_DESCRIPTION
 
-      let ws = $"obsws://($env.OBS_WEBSOCKET)/(konaste secret export --name obs-websocket)"
+      let ws = $"obsws://($env.OBS_WEBSOCKET)/(konamate secret export --name obs-websocket)"
       obs-cmd -w $ws streaming start
     depends_on:
       game:

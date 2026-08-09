@@ -242,6 +242,15 @@ You can add new games by creating a game definition file in the
 by `%{key}` placeholders must have string values. Invalid JSON and values that
 do not match the game definition schema are reported with their field path.
 
+### `konamate controller`
+
+This command reads Linux joystick state for workflow integration.
+`konamate controller read --device <path>` prints the current state as JSON.
+`konamate controller pressed --device <path> [--button <number>]` tests a
+specific button, or any button when `--button` is omitted. It produces no
+output and exits with status 0 when pressed, 1 when not pressed, and 2 when the
+device cannot be read.
+
 ### `konamate <game> config`
 
 This command configures the environment for the specified game. If user

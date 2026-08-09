@@ -20,17 +20,25 @@ processes:
         exit 1
       }
 
-      let buttons = (konaste controller read -d $env.CONTROLLER_DEVICE | from json | where type == "button")
-      if ($buttons | where number == 0).value == 1 {
+      let start_pressed = (konamate controller pressed -d $env.CONTROLLER_DEVICE --button 0 | complete)
+      if $start_pressed.exit_code == 0 {
         print -e "Aborting because the start button is pressed"
         exit 1
       }
+      if $start_pressed.exit_code != 1 {
+        print -e "Failed to read the controller"
+        exit 1
+      }
 
-      if ($buttons | where value == 1 | length) > 0 {
+      let any_pressed = (konamate controller pressed -d $env.CONTROLLER_DEVICE | complete)
+      if $any_pressed.exit_code == 0 {
         print "Skipping stream start because the controller buttons are pressed"
         rm -f $env.START_STREAMING_FILE
-      } else {
+      } else if $any_pressed.exit_code == 1 {
         touch $env.START_STREAMING_FILE
+      } else {
+        print -e "Failed to read the controller"
+        exit 1
       }
 
     availability:

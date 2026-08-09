@@ -20,57 +20,69 @@ import { secretCommand } from "./secret.ts";
 import { migrateCommand } from "./migrate.ts";
 import { settingsCommand } from "./settings.ts";
 
-const userGamesPath = path.join(configDir(), "games.json");
-let userGames: GameDefinition[] = [];
-try {
-  userGames = await readGameDefinitions(userGamesPath);
-} catch (error) {
-  if (!(error instanceof Deno.errors.NotFound)) throw error;
+async function main(): Promise<void> {
+  const userGamesPath = path.join(configDir(), "games.json");
+  let userGames: GameDefinition[] = [];
+  try {
+    userGames = await readGameDefinitions(userGamesPath);
+  } catch (error) {
+    if (!(error instanceof Deno.errors.NotFound)) throw error;
+  }
+  const games = mergeGameDefinitions(defaultGames, userGames);
+
+  const cmd = new Command()
+    .name(APP_NAME)
+    .version(versionJson)
+    .usage("<game> <command> [options]")
+    .description("Manage Konaste games")
+    .meta("deno", Deno.version.deno)
+    .command("completions", new CompletionsCommand())
+    .command(
+      "upgrade",
+      new UpgradeCommand({
+        provider: [
+          new GithubProvider({ repository: "atty303/konamate" }),
+        ],
+      }).action(() => {
+        // Upgrade command is not supported for single binary distribution
+        throw new ValidationError(
+          "This command is not supported yet. Please update manually.",
+        );
+      }),
+    )
+    .command("ls", "List available games")
+    .option("--json", "Output in JSON format")
+    .action((options) => {
+      if (options.json) {
+        console.log(JSON.stringify(games, null, 2));
+        Deno.exit(0);
+      }
+      for (const game of games) {
+        $.log(
+          `${colors.yellow.bold(game.id)} ${
+            colors.gray(`(URL: ${game.urlScheme})`)
+          }: ${game.name} - ${colors.blue.underline(game.loginUrl)}`,
+        );
+      }
+    })
+    .command("config", settingsCommand)
+    .command("migrate", migrateCommand)
+    .command("browser", browserCommand)
+    .command("controller", controllerCommand)
+    .command("secret", secretCommand);
+
+  games.forEach((game) => {
+    cmd.command(game.id, gameCommand(game));
+  });
+  await cmd.parse();
 }
-const games = mergeGameDefinitions(defaultGames, userGames);
 
-const cmd = new Command()
-  .name(APP_NAME)
-  .version(versionJson)
-  .usage("<game> <command> [options]")
-  .description("Manage Konaste games")
-  .meta("deno", Deno.version.deno)
-  .command("completions", new CompletionsCommand())
-  .command(
-    "upgrade",
-    new UpgradeCommand({
-      provider: [
-        new GithubProvider({ repository: "atty303/konamate" }),
-      ],
-    }).action(() => {
-      // Upgrade command is not supported for single binary distribution
-      throw new ValidationError(
-        "This command is not supported yet. Please update manually.",
-      );
-    }),
-  )
-  .command("ls", "List available games")
-  .option("--json", "Output in JSON format")
-  .action((options) => {
-    if (options.json) {
-      console.log(JSON.stringify(games, null, 2));
-      Deno.exit(0);
-    }
-    for (const game of games) {
-      $.log(
-        `${colors.yellow.bold(game.id)} ${
-          colors.gray(`(URL: ${game.urlScheme})`)
-        }: ${game.name} - ${colors.blue.underline(game.loginUrl)}`,
-      );
-    }
-  })
-  .command("config", settingsCommand)
-  .command("migrate", migrateCommand)
-  .command("browser", browserCommand)
-  .command("controller", controllerCommand)
-  .command("secret", secretCommand);
-
-games.forEach((game) => {
-  cmd.command(game.id, gameCommand(game));
-});
-await cmd.parse();
+try {
+  await main();
+} catch (error) {
+  if (Deno.args[0] === "controller" && Deno.args[1] === "pressed") {
+    console.error(error instanceof Error ? error.message : String(error));
+    Deno.exit(2);
+  }
+  throw error;
+}
