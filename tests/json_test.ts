@@ -52,7 +52,7 @@ Deno.test({
   permissions: { read: true },
   fn: async () => {
     await assertRejects(
-      () => readJsonFile("/missing/konaste.json", z.unknown()),
+      () => readJsonFile("/missing/konamate.json", z.unknown()),
       (error) => error instanceof Deno.errors.NotFound,
     );
   },

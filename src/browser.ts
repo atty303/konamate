@@ -1,16 +1,14 @@
 import { Command } from "@cliffy/command";
 import playwright from "patchright";
-import { Entry } from "@napi-rs/keyring";
 import $ from "@david/dax";
 import * as path from "@std/path";
-import xdg from "@404wolf/xdg-portable";
+import { KEYRING_SERVICE, stateDir } from "./app.ts";
+import { readKeyringPassword, writeKeyringPassword } from "./secret.ts";
 
 const browserStorage = path.join(
-  xdg.state(),
-  "konaste-buddy",
+  stateDir(),
   "browser-storage.json",
 );
-$.path(browserStorage).parent()?.ensureDir();
 
 async function launchBrowser(executablePath?: string) {
   const browser = await playwright.chromium.launch({
@@ -55,8 +53,7 @@ async function launchBrowser(executablePath?: string) {
         }
       },
       loadCredentials: async (service: string, name: string) => {
-        const entry = new Entry(service, name);
-        const text = entry.getPassword();
+        const text = readKeyringPassword(service, name);
         if (!text) {
           throw new Error(
             "No credential found in keyring. Please run the registration or import keyring first.",
@@ -94,7 +91,7 @@ function registerCommand() {
       "--passkey-service <service:string>",
       "Service name for the passkey",
       {
-        default: "io.github.atty303.konaste-buddy",
+        default: KEYRING_SERVICE,
       },
     )
     .option("--passkey-name <name:string>", "Name of the passkey", {
@@ -107,8 +104,11 @@ function registerCommand() {
           `Added credential: ${payload.credential.userDisplayName} (${payload.credential.credentialId})`,
         );
         $.logLight(JSON.stringify(payload.credential));
-        const entry = new Entry(options.passkeyService, options.passkeyName);
-        entry.setPassword(JSON.stringify(payload.credential));
+        writeKeyringPassword(
+          options.passkeyService,
+          options.passkeyName,
+          JSON.stringify(payload.credential),
+        );
       });
 
       await b.page.goto(options.startUrl);
@@ -138,7 +138,7 @@ function recordCommand() {
       "--passkey-service <service:string>",
       "Service name for the passkey",
       {
-        default: "io.github.atty303.konaste-buddy",
+        default: KEYRING_SERVICE,
       },
     )
     .option("--passkey-name <name:string>", "Name of the passkey", {
@@ -177,7 +177,7 @@ function launchCommand() {
       "--passkey-service <service:string>",
       "Service name for the passkey",
       {
-        default: "io.github.atty303.konaste-buddy",
+        default: KEYRING_SERVICE,
       },
     )
     .option("--passkey-name <name:string>", "Name of the passkey", {
@@ -255,6 +255,7 @@ function launchCommand() {
         );
         console.log(navigatedSchemeUrl);
 
+        await $.path(browserStorage).parent()?.ensureDir();
         await b.context.storageState({ path: browserStorage });
       } finally {
         Deno.removeSignalListener("SIGINT", stopOnSigint);

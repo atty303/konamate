@@ -1,5 +1,4 @@
 import * as path from "@std/path";
-import xdg from "@404wolf/xdg-portable";
 import $ from "@david/dax";
 import { z } from "zod";
 import {
@@ -8,6 +7,7 @@ import {
   ProfileNameSchema,
 } from "./games.ts";
 import { readJsonFile } from "./json.ts";
+import { configDir } from "./app.ts";
 
 const GameConfigFields = {
   env: z.record(z.string(), z.string()),
@@ -47,10 +47,6 @@ const StoredGameConfigSchema = z.object({
 });
 
 export type GameConfig = z.infer<typeof GameConfigSchema>;
-
-export function configDir() {
-  return path.join(xdg.config(), "konaste");
-}
 
 export function configPath(game: string) {
   return path.join(configDir(), `${game}.json`);

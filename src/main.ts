@@ -10,13 +10,14 @@ import {
   readGameDefinitions,
 } from "./games.ts";
 import { gameCommand } from "./command.ts";
-import { configDir } from "./config.ts";
+import { APP_NAME, configDir } from "./app.ts";
 import $ from "@david/dax";
 import * as path from "@std/path";
 import versionJson from "../version.json" with { type: "json" };
 import { browserCommand } from "./browser.ts";
 import { controllerCommand } from "./controller.ts";
 import { secretCommand } from "./secret.ts";
+import { migrateCommand } from "./migrate.ts";
 
 const userGamesPath = path.join(configDir(), "games.json");
 let userGames: GameDefinition[] = [];
@@ -28,7 +29,7 @@ try {
 const games = mergeGameDefinitions(defaultGames, userGames);
 
 const cmd = new Command()
-  .name("konaste")
+  .name(APP_NAME)
   .version(versionJson)
   .usage("<game> <command> [options]")
   .description("Manage Konaste games")
@@ -62,6 +63,7 @@ const cmd = new Command()
       );
     }
   })
+  .command("migrate", migrateCommand)
   .command("browser", browserCommand)
   .command("controller", controllerCommand)
   .command("secret", secretCommand);

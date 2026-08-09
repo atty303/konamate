@@ -10,7 +10,7 @@ pkl = "latest"
 description = "Install the CLI"
 usage = 'flag "--root <root>"'
 run = [
-    "deno install -A --global --force --config deno.jsonc --name konaste --root \"${usage_root:-$HOME/.deno}\" src/main.ts",
+    "deno install -A --global --force --config deno.jsonc --name konamate --root \"${usage_root:-$HOME/.deno}\" src/main.ts",
 ]
 
 [tasks.check]
@@ -48,7 +48,7 @@ run = "deno run -A tests/e2e/sdvx.ts"
 description = "Build the CLI binary"
 usage = 'flag "--arch <arch>" default="x86_64-unknown-linux-gnu"'
 run = [
-    "deno compile -A --target ${usage_arch?} -o dist/konaste-${usage_arch?} src/main.ts",
+    "deno compile -A --target ${usage_arch?} -o dist/konamate-${usage_arch?} src/main.ts",
 ]
 
 [tasks.test]

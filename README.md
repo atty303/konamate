@@ -1,6 +1,6 @@
 <img width="140" height="49" alt="logo_header" src="https://github.com/user-attachments/assets/d69237a7-152d-4d10-9b47-6cb96cefb324" />
 
-# Running konaste games on Linux
+# Konamate: Running Konaste games on Linux
 
 > [!IMPORTANT]
 > YOU MUST HAVE A LEGAL SUBSCRIPTION TO PLAY THESE GAMES. THIS TOOL DOES NOT
@@ -56,15 +56,31 @@ Download the latest release from the
 it using the following command:
 
 ```bash
-cp ~/Downloads/konaste-x86_64-unknown-linux-gnu ~/.local/bin/konaste
-chmod +x ~/.local/bin/konaste
+cp ~/Downloads/konamate-x86_64-unknown-linux-gnu ~/.local/bin/konamate
+chmod +x ~/.local/bin/konamate
 ```
 
 or install it with [ubi](https://github.com/houseabsolute/ubi).
 
 ```bash
-ubi -p atty303/konamate -e konaste -i ~/.local/bin
+ubi -p atty303/konamate -e konamate -i ~/.local/bin
 ```
+
+### Upgrading from Konaste
+
+The executable and application data locations changed in Konamate. After
+installing the new executable, copy your existing configuration and browser
+state to the new locations:
+
+```bash
+konamate migrate
+```
+
+Existing files in the new locations take precedence, and legacy data is left
+unchanged. Keyring entries are copied from the legacy service when first used.
+Wine prefixes and desktop URL associations are not migrated. Run
+`konamate <game> associate` again for each configured game, then remove the old
+executable when it is no longer needed.
 
 ## Minimal steps to launch the games
 
@@ -73,7 +89,7 @@ for the game audio output. For example, you can use the following command to
 create a loopback sink temporarily:
 
 ```bash
-pw-loopback -m "[ FL FR ]" --capture-props='media.class=Audio/Sink node.name=konaste-sink node.description=Konaste audio.rate=44100'
+pw-loopback -m "[ FL FR ]" --capture-props='media.class=Audio/Sink node.name=konamate-sink node.description=Konamate audio.rate=44100'
 ```
 
 To persist the sink, you can configure PipeWire configuration.
@@ -86,8 +102,8 @@ To persist the sink, you can configure PipeWire configuration.
 1. Run the following command to configure and create the wine prefix:
 
 ```bash
-konaste infinitas config --env.PROTONPATH=GE-Proton10-9 --env.PULSE_SINK=konaste-sink
-konaste infinitas exec umu-run wineboot --init
+konamate infinitas config --env.PROTONPATH=GE-Proton10-9 --env.PULSE_SINK=konamate-sink
+konamate infinitas exec umu-run wineboot --init
 ```
 
 2. Download the installer from the
@@ -96,19 +112,19 @@ konaste infinitas exec umu-run wineboot --init
 3. Run the following command to install it:
 
 ```bash
-konaste infinitas exec WINEDLLOVERRIDES="ieframe=d" umu-run msiexec /i ~/Downloads/infinitas_installer_2022060800.msi
+konamate infinitas exec WINEDLLOVERRIDES="ieframe=d" umu-run msiexec /i ~/Downloads/infinitas_installer_2022060800.msi
 ```
 
 4. Run the following command to associate the URL scheme with the game:
 
 ```bash
-konaste infinitas associate
+konamate infinitas associate
 ```
 
 5. Run the following command to open the login page in your browser:
 
 ```bash
-konaste infinitas run
+konamate infinitas run
 ```
 
 6. After logging in, click the `ゲーム起動` button to launch the game launcher.
@@ -133,8 +149,8 @@ konaste infinitas run
 1. Run the following command to configure and create the wine prefix:
 
 ```bash
-konaste sdvx config --env.PROTONPATH=GE-Proton10-9 --env.PULSE_SINK=konaste-sink
-konaste sdvx exec umu-run wineboot --init
+konamate sdvx config --env.PROTONPATH=GE-Proton10-9 --env.PULSE_SINK=konamate-sink
+konamate sdvx exec umu-run wineboot --init
 ```
 
 2. Download the installer from the
@@ -144,19 +160,19 @@ konaste sdvx exec umu-run wineboot --init
 3. Run the following command to install it:
 
 ```bash
-konaste sdvx exec WINEDLLOVERRIDES="ieframe=d" umu-run msiexec /i ~/Downloads/sdvx_installer_2022011800.msi
+konamate sdvx exec WINEDLLOVERRIDES="ieframe=d" umu-run msiexec /i ~/Downloads/sdvx_installer_2022011800.msi
 ```
 
 4. Run the following command to associate the URL scheme with the game:
 
 ```bash
-konaste sdvx associate
+konamate sdvx associate
 ```
 
 5. Run the following command to open the login page in your browser:
 
 ```bash
-konaste sdvx run
+konamate sdvx run
 ```
 
 <img width="502" height="495" alt="Screen Shot 2025-07-14 at 16 01 02" src="https://github.com/user-attachments/assets/2eaab921-bb50-49bc-99c8-e1418125662e" />
@@ -171,8 +187,8 @@ konaste sdvx run
 1. Run the following command to configure the wine prefix:
 
 ```bash
-konaste gitadora config --env.PROTONPATH=GE-Proton10-9 --env.PULSE_SINK=konaste-sink
-konaste gitadora exec umu-run wineboot --init
+konamate gitadora config --env.PROTONPATH=GE-Proton10-9 --env.PULSE_SINK=konamate-sink
+konamate gitadora exec umu-run wineboot --init
 ```
 
 2. Download the installer from the
@@ -181,19 +197,19 @@ konaste gitadora exec umu-run wineboot --init
 3. Run the following command to install it:
 
 ```bash
-konaste gitadora exec WINEDLLOVERRIDES="ieframe=d" umu-run msiexec /i ~/Downloads/GITADORA_installer.msi
+konamate gitadora exec WINEDLLOVERRIDES="ieframe=d" umu-run msiexec /i ~/Downloads/GITADORA_installer.msi
 ```
 
 4. Run the following command to associate the URL scheme with the game:
 
 ```bash
-konaste gitadora associate
+konamate gitadora associate
 ```
 
 5. Run the following command to open the login page in your browser:
 
 ```bash
-konaste gitadora run
+konamate gitadora run
 ```
 
 4. After logging in, click the `ゲーム起動` button to launch the game.
@@ -204,41 +220,41 @@ konaste gitadora run
 
 You can explore the available commands by specifying the `--help` option.
 
-### `konaste ls`
+### `konamate ls`
 
 This command lists the available games that can be managed by this tool.
 
 You can add new games by creating a game definition file in the
-`~/.config/konaste/games.json` file. Format of the game definition file is as
+`~/.config/konamate/games.json` file. Format of the game definition file is as
 `defaultGames` in the [src/games.ts](src/games.ts). Additional properties used
 by `%{key}` placeholders must have string values. Invalid JSON and values that
 do not match the game definition schema are reported with their field path.
 
-### `konaste <game> config`
+### `konamate <game> config`
 
 This command configures the environment for the specified game. If user
 configuration is not initialized, it will create with the default configuration.
 
-- `konaste infinitas config`: Shows the current configuration for the game.
-- `konaste infinitas config --env.NAME=<value>`: Sets the environment variable
+- `konamate infinitas config`: Shows the current configuration for the game.
+- `konamate infinitas config --env.NAME=<value>`: Sets the environment variable
   `NAME` to `value`. Use this to set umu-launcher, Proton or Wine environment
   variables.
 
-### `konaste <game> profile`
+### `konamate <game> profile`
 
 This command manages the profiles for the specified game. Profiles are used to
 configure the command to run the game when launching from browser. Some default
 game definitions have preconfigured profiles for running the game directly
 without launcher.
 
-- `konaste infinitas profile`: Lists the available profiles for the game.
-- `konaste infinitas profile --default`: Unsets the default profile. If no
+- `konamate infinitas profile`: Lists the available profiles for the game.
+- `konamate infinitas profile --default`: Unsets the default profile. If no
   profile is set as default, selection will be prompted when launching. This is
   stored as `"runProfile": null` in the game configuration.
-- `konaste infinitas profile <name> --command <command>`: Creates or updates a
+- `konamate infinitas profile <name> --command <command>`: Creates or updates a
   profile with the specified name and command.
-- `konaste infinitas profile <name> --delete`: Deletes the specified profile.
-- `konaste infinitas profile <name> --default`: Sets the specified profile as
+- `konamate infinitas profile <name> --delete`: Deletes the specified profile.
+- `konamate infinitas profile <name> --default`: Sets the specified profile as
   the default profile. The profile must already exist or be created by the same
   command.
 
@@ -254,21 +270,21 @@ You can use the following placeholders in the command string:
 - `%{key}`: The value of the game definition `key`.
   - `%{id}`: The game ID (e.g. 'infinitas', 'sdvx', etc.).
 
-### `konaste <game> associate`
+### `konamate <game> associate`
 
 This command registers the URL scheme for the specified game in the desktop
 environment. It allows you to launch the game from the browser.
 
-### `konaste <game> exec <...command>`
+### `konamate <game> exec <...command>`
 
 This command executes the specified command with configured environment
 variables.
 
-- `konaste infinitas exec umu-run winetricks <verbs>`: Runs Winetricks with the
+- `konamate infinitas exec umu-run winetricks <verbs>`: Runs Winetricks with the
   specified verbs.
-- `konaste infinitas exec umu-run winecfg`: Opens the Wine configuration dialog.
+- `konamate infinitas exec umu-run winecfg`: Opens the Wine configuration dialog.
 
-### `konaste <game> run [url]`
+### `konamate <game> run [url]`
 
 This command opens the login URL in your default web browser if no URL is
 provided.
@@ -286,7 +302,7 @@ Linux kernel 6.14 or newer, and becomes available when `/dev/ntsync` exists.
 To enable ntsync, run the following command:
 
 ```bash
-konaste infinitas config --env.PROTON_USE_NTSYNC=1
+konamate infinitas config --env.PROTON_USE_NTSYNC=1
 ```
 
 ### Use gamescope
@@ -295,13 +311,13 @@ To run the game with [gamescope](https://github.com/ValveSoftware/gamescope),
 you can use the following command to configure the profile:
 
 ```bash
-konaste infinitas profile gamescope --command "gamescope -f -r 120 -w 1920 -h 1080 --mangoapp -- umu-run %r\\game\\app\\bm2dx.exe -t %t" --default
+konamate infinitas profile gamescope --command "gamescope -f -r 120 -w 1920 -h 1080 --mangoapp -- umu-run %r\\game\\app\\bm2dx.exe -t %t" --default
 ```
 
 To revert this configuration when game update is required, you can run:
 
 ```bash
-konaste infinitas profile launcher --default
+konamate infinitas profile launcher --default
 ```
 
 ### Setup low latency audio with PipeWire
@@ -355,13 +371,13 @@ context.modules = [
   {
     name = libpipewire-module-loopback
     args = {
-      node.description = "Konaste Loopback"
+      node.description = "Konamate Loopback"
       audio.position = [ FL FR ]
       capture.props = {
-        node.name = "konaste-sink"
+        node.name = "konamate-sink"
         media.class = "Audio/Sink"
-        node.description = "Konaste Sink"
-        device.description = "Konaste Sink"
+        node.description = "Konamate Sink"
+        device.description = "Konamate Sink"
         device.class = "sound"
         device.icon-name = "audio-card"
         node.virtual = false
@@ -370,7 +386,7 @@ context.modules = [
         audio.channels = 2
       }
       playback.props = {
-        node.name = "konaste-output"
+        node.name = "konamate-output"
         node.passive = true
 
         # You can specify the target audio output device here or leave it as default.
@@ -390,7 +406,7 @@ systemctl --user restart pipewire pipewire-pulse
 Configure the game side audio buffer size to reduce latency:
 
 ```bash
-konaste infinitas config --env.PULSE_LATENCY_MSEC=60
+konamate infinitas config --env.PULSE_LATENCY_MSEC=60
 ```
 
 Lowering the value will reduce latency, but may cause audio dropouts if your
@@ -423,7 +439,7 @@ Maybe Koanste games expect the system to be configured for Japanese locale. If
 you encounter issues, try setting the locale to Japanese may help.
 
 ```bash
-konaste infinitas config --env.LANG=ja_JP.UTF-8
+konamate infinitas config --env.LANG=ja_JP.UTF-8
 ```
 
 ### Launching the game fails
@@ -454,7 +470,7 @@ to build the CLI for the default architecture.
 To install the tool from source, run the following command:
 
 ```bash
-deno install -A --global -n konaste --config ./deno.jsonc src/main.ts
+deno install -A --global -n konamate --config ./deno.jsonc src/main.ts
 ```
 
 If you're not using the compiled binary, the tool cannot determine its own
@@ -468,8 +484,8 @@ launch URL, and starts the installed game through umu/Proton. It is interactive,
 host-dependent, and intentionally separate from `mise run check` and CI.
 
 Use an existing SDVX Wine prefix, but pass it explicitly so the test does not
-read or modify `~/.config/konaste`. Playwright browser storage and the generated
-konaste configuration are isolated in a temporary directory. The existing
+read or modify `~/.config/konamate`. Playwright browser storage and the generated
+konamate configuration are isolated in a temporary directory. The existing
 passkey is read from the keyring.
 
 ```bash
@@ -486,7 +502,7 @@ The test asks for confirmation before accessing the account or launching the
 game. Proton and SDVX may update the selected prefix, shader caches, and game
 settings. After the game exits, confirm the title screen, audio, and physical
 controller behavior. Sanitized results are written under
-`${XDG_CACHE_HOME:-~/.cache}/konaste/e2e/` by default; launch URLs,
+`${XDG_CACHE_HOME:-~/.cache}/konamate/e2e/` by default; launch URLs,
 authorization tokens, and passkey contents are not recorded.
 
 ## Verified Configurations
@@ -603,6 +619,6 @@ Drummania functionality has been tested on the following configurations:
 ## References
 
 - [mizztgc/konaste-linux](https://github.com/mizztgc/konaste-linux) - Another
-  work for konaste games on Linux that uses bash scripts and doesn't use Proton.
+  work for Konaste games on Linux that uses bash scripts and doesn't use Proton.
 
 </details>

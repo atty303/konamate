@@ -23,10 +23,10 @@ function configCommand(def: GameDefinition) {
       "--env.* [value:string]",
       "Set environment variable (empty value to unset)",
     )
-    .example("Show current configuration", "konaste game config")
+    .example("Show current configuration", "konamate game config")
     .example(
       "Set environment variables",
-      "konaste game config --env WINEPREFIX=/path/to/prefix",
+      "konamate game config --env WINEPREFIX=/path/to/prefix",
     )
     .action(async (options) => {
       const defaultConfig = {
@@ -34,7 +34,7 @@ function configCommand(def: GameDefinition) {
           WINEPREFIX: path.join(
             Deno.env.get("HOME") ?? "",
             "Games",
-            "konaste",
+            "konamate",
             def.id,
           ),
           GAMEID: `umu-${def.id}`,
@@ -84,8 +84,8 @@ command string supports the following placeholders:
     .option("--cwd <dir:file>", "Set the working directory for the profile")
     .option("--delete", "Delete the profile")
     .arguments("[name:string]")
-    .example("List all profiles", "konaste game profile")
-    .example("Unset the default profile", "konaste game profile --default")
+    .example("List all profiles", "konamate game profile")
+    .example("Unset the default profile", "konamate game profile --default")
     .action(async (options, name) => {
       const current = await readConfig(def);
       const hasChanges = Object.keys(options).length > 0;

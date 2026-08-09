@@ -225,7 +225,7 @@ async function writeResult(outputPath: string, result: E2eResult) {
 }
 
 const defaultBrowser = "/var/lib/flatpak/exports/bin/com.google.Chrome";
-const defaultBinary = "dist/konaste-x86_64-unknown-linux-gnu";
+const defaultBinary = "dist/konamate-x86_64-unknown-linux-gnu";
 
 const { options } = await new Command()
   .name("sdvx-live-e2e")
@@ -239,14 +239,14 @@ const { options } = await new Command()
   .option("--browser <path:file>", "Browser executable", {
     default: defaultBrowser,
   })
-  .option("--binary <path:file>", "Compiled konaste binary", {
+  .option("--binary <path:file>", "Compiled konamate binary", {
     default: defaultBinary,
   })
   .option("--pulse-sink <name:string>", "PipeWire/PulseAudio sink", {
-    default: "konaste-sink",
+    default: "konamate-sink",
   })
   .option("--passkey-service <name:string>", "Existing passkey service", {
-    default: "io.github.atty303.konaste-buddy",
+    default: "io.github.atty303.konamate",
   })
   .option("--passkey-name <name:string>", "Existing passkey name", {
     default: "passkey-default",
@@ -264,7 +264,7 @@ const runId = startedAt.toISOString().replaceAll(":", "-");
 const cacheHome = Deno.env.get("XDG_CACHE_HOME") ??
   path.join(Deno.env.get("HOME") ?? ".", ".cache");
 const resultPath = options.output ??
-  path.join(cacheHome, "konaste", "e2e", runId, "result.json");
+  path.join(cacheHome, "konamate", "e2e", runId, "result.json");
 const result: E2eResult = {
   test: "sdvx-live-e2e",
   startedAt: startedAt.toISOString(),
@@ -303,7 +303,7 @@ try {
     }
 
     parseGameEnv(options.gameEnv ?? []);
-    result.versions.konaste = await readVersion(options.binary, ["-V"]);
+    result.versions.konamate = await readVersion(options.binary, ["-V"]);
     result.versions.umu = await readVersion("umu-run", ["--version"]);
     result.stages.push({ stage: "preflight", status: "passed" });
   } catch (error) {
@@ -319,14 +319,14 @@ try {
 - launch SDVX using the existing Wine prefix: ${options.winePrefix}
 - allow Proton and the game to update prefix state, caches, and game settings
 
-It will not read ~/.config/konaste or reuse Playwright browser storage.`);
+It will not read ~/.config/konamate or reuse Playwright browser storage.`);
   if (!await confirm("Continue with the live test?")) {
     result.status = "cancelled";
     throw new StageError("confirmation", "Cancelled by user");
   }
   result.stages.push({ stage: "confirmation", status: "passed" });
 
-  temporaryXdg = await Deno.makeTempDir({ prefix: "konaste-e2e-" });
+  temporaryXdg = await Deno.makeTempDir({ prefix: "konamate-e2e-" });
   const isolatedEnv = {
     XDG_CONFIG_HOME: path.join(temporaryXdg, "config"),
     XDG_DATA_HOME: path.join(temporaryXdg, "data"),

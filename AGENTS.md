@@ -21,11 +21,12 @@
 
 ## Local State and Secrets
 
-- Do not use the existing `~/.config/konaste/`, keyring entries, desktop
-  associations, browser profile, or OBS configuration for verification. Use
-  temporary paths and disposable state.
+- Do not use the existing `~/.config/konamate/`, legacy
+  `~/.config/konaste/`, keyring entries, desktop associations, browser profile,
+  or OBS configuration for verification. Use temporary paths and disposable
+  state.
 - Never commit authorization URLs, tokens, keyring contents, or files from
-  `~/.config/konaste/`.
+  `~/.config/konamate/` or legacy `~/.config/konaste/`.
 
 ## Release Tasks
 
