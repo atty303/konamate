@@ -36,7 +36,8 @@ alternative.
 ## Prerequisites
 
 - Modern Linux distribution
-- A Chromium executable supported by Patchright and a system keyring
+- Google Chrome, Chromium, Brave, Microsoft Edge, or Vivaldi supported by
+  Patchright, and a system keyring
 - [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher) and it's
   dependencies
   - I recommend using Proton via umu‑launcher. Since Proton containerizes all
@@ -86,11 +87,15 @@ configured game, then remove the old executable when it is no longer needed.
 
 ## Minimal steps to launch the games
 
-Configure the Chromium executable used for authentication:
+Konamate automatically detects a compatible Chromium browser and saves its path
+when a browser command is first used. To detect and save it in advance, run:
 
 ```bash
-konamate config --browser /path/to/chromium
+konamate config --detect
 ```
+
+Use `konamate config --browser /path/to/chromium` when automatic detection does
+not find the intended browser.
 
 Register a passkey with the virtual authenticator. Complete the registration on
 the KONAMI account page opened by the command:
@@ -216,9 +221,16 @@ You can explore the available commands by specifying the `--help` option.
 
 ### `konamate config`
 
-This command stores application-wide settings. Configure the browser once with
-`konamate config --browser /path/to/chromium`; browser-related commands also
-accept `--browser` as a one-time override.
+This command displays or stores application-wide settings. With no options it
+only displays the saved settings. Use `--detect` to find a compatible browser
+and save its path, or `--browser /path/to/chromium` to save a path explicitly.
+Browser-related commands also accept `--browser` as a one-time override.
+
+When no browser is configured, browser-related commands search `PATH`, the user
+Flatpak exports, and the system Flatpak exports for Google Chrome, Chromium,
+Brave, Microsoft Edge, or Vivaldi, in that order. The detected path is saved for
+future use. An existing setting is never replaced automatically; use
+`konamate config --detect` to detect again.
 
 ### `konamate ls`
 
