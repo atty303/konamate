@@ -2,32 +2,33 @@
   "version": "5",
   "specifiers": {
     "jsr:@404wolf/xdg-portable@0.1": "0.1.0",
-    "jsr:@cliffy/ansi@^1.0.0-rc.8": "1.2.1",
-    "jsr:@cliffy/command@^1.0.0-rc.8": "1.2.1",
+    "jsr:@cliffy/ansi@^1.2.1": "1.2.1",
+    "jsr:@cliffy/command@^1.2.1": "1.2.1",
     "jsr:@cliffy/flags@1.2.1": "1.2.1",
     "jsr:@cliffy/internal@1.2.1": "1.2.1",
     "jsr:@cliffy/table@1.2.1": "1.2.1",
-    "jsr:@david/console-static-text@0.3": "0.3.4",
-    "jsr:@david/dax@~0.43.2": "0.43.2",
-    "jsr:@david/path@0.2": "0.2.0",
-    "jsr:@david/which@~0.4.1": "0.4.2",
+    "jsr:@david/console-static-text@~0.3.4": "0.3.4",
+    "jsr:@david/dax@0.49": "0.49.0",
+    "jsr:@david/path@0.3": "0.3.3",
+    "jsr:@david/path@~0.3.2": "0.3.3",
+    "jsr:@david/shell@0.6": "0.6.0",
+    "jsr:@david/which@0.7": "0.7.3",
+    "jsr:@david/which@~0.7.1": "0.7.3",
     "jsr:@std/bytes@^1.0.6": "1.0.6",
     "jsr:@std/encoding@^1.0.10": "1.0.11",
     "jsr:@std/fmt@1": "1.0.10",
     "jsr:@std/fmt@^1.0.10": "1.0.10",
-    "jsr:@std/fs@1": "1.0.24",
     "jsr:@std/internal@^1.0.14": "1.0.14",
     "jsr:@std/io@0.225": "0.225.3",
     "jsr:@std/io@~0.225.3": "0.225.3",
     "jsr:@std/path@1": "1.1.6",
     "jsr:@std/path@^1.0.8": "1.1.6",
-    "jsr:@std/path@^1.1.5": "1.1.6",
     "jsr:@std/path@^1.1.6": "1.1.6",
     "jsr:@std/semver@^1.0.8": "1.0.8",
     "jsr:@std/text@^1.0.19": "1.0.19",
-    "npm:@napi-rs/keyring@^1.1.8": "1.1.8",
+    "npm:@napi-rs/keyring@^1.3.0": "1.3.0",
     "npm:@types/node@*": "22.15.15",
-    "npm:patchright@^1.52.5": "1.52.5",
+    "npm:patchright@^1.61.1": "1.61.1",
     "npm:zod@*": "4.4.3",
     "npm:zod@^4.4.3": "4.4.3"
   },
@@ -77,27 +78,35 @@
     "@david/console-static-text@0.3.4": {
       "integrity": "1c596f500b075ff3c8bab1d328ca7148a88067fd9a506b16a73eeaf230c229fd"
     },
-    "@david/dax@0.43.2": {
-      "integrity": "8c7df175465d994c0e3568e3eb91102768c2f1c86d2a513d7fc4cab13f9cb328",
+    "@david/dax@0.49.0": {
+      "integrity": "9876274ff7cffd4d91c5e4bd362e55330bcecd3df8c4450d7c3db46e50e83111",
       "dependencies": [
         "jsr:@david/console-static-text",
-        "jsr:@david/path",
-        "jsr:@david/which",
+        "jsr:@david/path@~0.3.2",
+        "jsr:@david/shell",
+        "jsr:@david/which@0.7",
+        "jsr:@std/fmt@1"
+      ]
+    },
+    "@david/path@0.3.3": {
+      "integrity": "19887b1c4ff36d1719b1697b4c10071853f13a85cf60e8713f6a6947e86271b0",
+      "dependencies": [
+        "jsr:@std/path@^1.1.6"
+      ]
+    },
+    "@david/shell@0.6.0": {
+      "integrity": "c58b1005b95ea16195d437cccebae3cd939c7b242a12067f37943b3d114dbf17",
+      "dependencies": [
+        "jsr:@david/console-static-text",
+        "jsr:@david/path@0.3",
+        "jsr:@david/which@~0.7.1",
         "jsr:@std/fmt@1",
-        "jsr:@std/fs",
         "jsr:@std/io@0.225",
         "jsr:@std/path@1"
       ]
     },
-    "@david/path@0.2.0": {
-      "integrity": "f2d7aa7f02ce5a55e27c09f9f1381794acb09d328f8d3c8a2e3ab3ffc294dccd",
-      "dependencies": [
-        "jsr:@std/fs",
-        "jsr:@std/path@1"
-      ]
-    },
-    "@david/which@0.4.2": {
-      "integrity": "440ee262bc0673b57a39ad4d0dc5673e515ddd41c049a55b2588a0881e5d4a8c"
+    "@david/which@0.7.3": {
+      "integrity": "ad6697179c4a153b774c59d06ebc056c4f87a9c27117ff74eecb120c245a2aea"
     },
     "@std/bytes@1.0.6": {
       "integrity": "f6ac6adbd8ccd99314045f5703e23af0a68d7f7e58364b47d2c7f408aeb5820a"
@@ -107,13 +116,6 @@
     },
     "@std/fmt@1.0.10": {
       "integrity": "90dfba288802ac6de82fb31d0917eb9e4450b9925b954d5e51fc29ac07419db5"
-    },
-    "@std/fs@1.0.24": {
-      "integrity": "f3061b45b81673a2bece689da041df32d174be064c89eb6397fb5718d3fb7877",
-      "dependencies": [
-        "jsr:@std/internal",
-        "jsr:@std/path@^1.1.5"
-      ]
     },
     "@std/internal@1.0.14": {
       "integrity": "291516b3d4c35024d6ffbc0a9df5bf4c64116e05b50012cf846710152d2ffdf7"
@@ -138,68 +140,68 @@
     }
   },
   "npm": {
-    "@napi-rs/keyring-darwin-arm64@1.1.8": {
-      "integrity": "sha512-zaieCiY+gEl8kR7tJrKMfOMDHyUDfJYlGvAgWX4WZOnpvWZ5E+F+KGzm8TMQKkipiGRJgP6aCiQAB8m3dSl5kw==",
+    "@napi-rs/keyring-darwin-arm64@1.3.0": {
+      "integrity": "sha512-pl76hJvdYUBn6I24bXiOBMA9nbDapo3I5B+f3OorjDU4dUMSypXeKbOVehJe8fhgTiH24flMyTS3aAIy43xegQ==",
       "os": ["darwin"],
       "cpu": ["arm64"]
     },
-    "@napi-rs/keyring-darwin-x64@1.1.8": {
-      "integrity": "sha512-aPVDt8S4jk/WCksoVQzyy74sbJ/C8AcvwSLKekMl6XBwJn+gyOPAWsxl0ct5qa3XKVNJFp1rTnshC9pXn37k7g==",
+    "@napi-rs/keyring-darwin-x64@1.3.0": {
+      "integrity": "sha512-YcJtEV5LA3cvA4z3BurgxH5IhTsW1JfIvcAAcqcecwk06Si9F9NqkxbZVIfDwQ8oRHgaBmT3zZJnLAotCrVahw==",
       "os": ["darwin"],
       "cpu": ["x64"]
     },
-    "@napi-rs/keyring-freebsd-x64@1.1.8": {
-      "integrity": "sha512-KHBygXZIi/JNPSKGavstgY3dIu74VAPtW3CI3zYYGXdrLiVKBLJIG0Q92ncjnzevSygx+vwr9wZ+aSyY9R5bTQ==",
+    "@napi-rs/keyring-freebsd-x64@1.3.0": {
+      "integrity": "sha512-vlLf31TGhfRAaxLDBhg8b89ss0HHD/lyNmL5F3UjSaz5CUXElsJmKYq9fqA/B+cZKUEUcLHHGhF0I/CqcFdaVw==",
       "os": ["freebsd"],
       "cpu": ["x64"]
     },
-    "@napi-rs/keyring-linux-arm-gnueabihf@1.1.8": {
-      "integrity": "sha512-LPt7gPCyILQ2VqMdXu/YUX8Y+1lsMLedMgsTSicuLDFC55vtA/gZSBiXo0z/Jxkxve32HzmP/TkA9qZoakCkxA==",
+    "@napi-rs/keyring-linux-arm-gnueabihf@1.3.0": {
+      "integrity": "sha512-KiWdMMu/Inz/bHHIAGrnF7r54FZDYXuHO6UFF/rhIrshUsxbMG1Rl9lEymNtqqsVo927G0VYcb02FzWQ3iBQRQ==",
       "os": ["linux"],
       "cpu": ["arm"]
     },
-    "@napi-rs/keyring-linux-arm64-gnu@1.1.8": {
-      "integrity": "sha512-trc12/quEhURlaEXqxXIXX57ESpijKn41ijSg7FnYh/V8vNg9SKnGHeMzMAOLj8ePN/E10vGnCH/Dsifxlhbsg==",
+    "@napi-rs/keyring-linux-arm64-gnu@1.3.0": {
+      "integrity": "sha512-eyKGpY40lm9Jvs1aD294XRH4y7+TlJM0YVAryZeXA6TX0mb4gMkxVXwSQv7MCwgah7raeUd0dKUb4BPAYIgcMg==",
       "os": ["linux"],
       "cpu": ["arm64"]
     },
-    "@napi-rs/keyring-linux-arm64-musl@1.1.8": {
-      "integrity": "sha512-mnUor/xjXrLbYRii+/qeH/vYldgDzaA9w2aZ588iHyzwHeBXe6fn4GlW7QWHAYF0Xnf6Ja6LTOmYaETbnbe+NQ==",
+    "@napi-rs/keyring-linux-arm64-musl@1.3.0": {
+      "integrity": "sha512-iIK6JWHXAJqDrEyLY3TmswwloVyt2vj+04TZnew+uSJ9gnDO8EwRbp3/iw3LpWaXiDO7VomGO6y8I0Id8uBZSw==",
       "os": ["linux"],
       "cpu": ["arm64"]
     },
-    "@napi-rs/keyring-linux-riscv64-gnu@1.1.8": {
-      "integrity": "sha512-x3E5BYp7zUp7W8pciyB/ubDpjx8mkhGro0k5nyJYdr0UgxzVhHWFjUUKP0T9eF6S6zMmwQUz1VjPpPE6hZ9jlA==",
+    "@napi-rs/keyring-linux-riscv64-gnu@1.3.0": {
+      "integrity": "sha512-/PGqrwn6EwgtK6vccASSXJRfOSP4vN1F4ASsIQ+7MdrK6hNvAJ1FZPrIuD5gGGdxezo3F++To2Wq7DbuGIeuNQ==",
       "os": ["linux"],
       "cpu": ["riscv64"]
     },
-    "@napi-rs/keyring-linux-x64-gnu@1.1.8": {
-      "integrity": "sha512-qbo0PXvRhXvBYK6LZMUSgSY0z8MBNIMzzH6GHnwSGCeYU0kVNcLFvPzE5KMo3Iis0H+uozkC2Gzu2VDuVdL5jQ==",
+    "@napi-rs/keyring-linux-x64-gnu@1.3.0": {
+      "integrity": "sha512-2PDK1WKWTu9lBGq9VvNEkSlQD3O7YwVpmnyN2M3cy4v7NJ/8gDMd9GXv3G+FVXN13uhp4gnnPBS+ScefmEeD2A==",
       "os": ["linux"],
       "cpu": ["x64"]
     },
-    "@napi-rs/keyring-linux-x64-musl@1.1.8": {
-      "integrity": "sha512-AfAVQg1n/NEzhAtfqnTIXRBqI4ei3kUuknNxGJTPs5MA5L0MA+WK7pNnOt291/1yllspbHmF0Fj/QRojQESsQw==",
+    "@napi-rs/keyring-linux-x64-musl@1.3.0": {
+      "integrity": "sha512-oJ2HkX8YUo46QBkn0pG+HuIKQNqr523q6vBobCn+P95s4C4K6/kLBqHY/1bg5J4ap31DzsznhnFKcfBNBsjCnw==",
       "os": ["linux"],
       "cpu": ["x64"]
     },
-    "@napi-rs/keyring-win32-arm64-msvc@1.1.8": {
-      "integrity": "sha512-95AcaHZJrwHt0ZT452YgHoyaMrL+vSQoblz+IajL3g4q1gNimOFsXu/MekiXX2eo6tMMzR9IWC6hysw+Z2BKVQ==",
+    "@napi-rs/keyring-win32-arm64-msvc@1.3.0": {
+      "integrity": "sha512-tOd3c/uAaeoE4ycVlmAdSvygz0Zt3zdca6Y7gokBeIbaRDWpjDIUOpU3MvML59XAaqyuKGsVVu0F/DZb1lHPmw==",
       "os": ["win32"],
       "cpu": ["arm64"]
     },
-    "@napi-rs/keyring-win32-ia32-msvc@1.1.8": {
-      "integrity": "sha512-V4FvTodwoi+W2wLQUOjm2lk7diuSFYZ2xHGKwH4kYOln29WcE3GXbBZAfs+LJNk1nnKeBj1mMqgq8/4tSUukhg==",
+    "@napi-rs/keyring-win32-ia32-msvc@1.3.0": {
+      "integrity": "sha512-sPSqeAFZMGqP1R++M2JTza7GQJJ/TpCo6JU6Vcd4jnebvOaEDs9b7eipakU1PJdSvhpC2yXMCNRk9gXfrhuwHQ==",
       "os": ["win32"],
       "cpu": ["ia32"]
     },
-    "@napi-rs/keyring-win32-x64-msvc@1.1.8": {
-      "integrity": "sha512-SUDyvwZW/GA2CqqtZnBb2+Z2e69E8bd6RNWDJX3NCvnZFQajXDjtY0qnyf6d3/RwElkVV091l5yWBHBlRHtTzA==",
+    "@napi-rs/keyring-win32-x64-msvc@1.3.0": {
+      "integrity": "sha512-4DnCWXwDc0HRKwyRlG5y0VhKZW2tNRQfKKfyj6IX/KWfDNyq9hn4n+GL1auyDcOO/v8PwnhmYo2+rOOqCkvvOg==",
       "os": ["win32"],
       "cpu": ["x64"]
     },
-    "@napi-rs/keyring@1.1.8": {
-      "integrity": "sha512-FZw+fuwhcNyZDpA7Eg3xjdQ0oKfcr/IWNfzrPqPd9+Ug85VsCnV1eQPDrIIzYNeYtAVvnXQQFp1umtaM+JVSfQ==",
+    "@napi-rs/keyring@1.3.0": {
+      "integrity": "sha512-WrOw/bcXm0f9qHkumlT1QlArXSTWqaY9sunsDpOk+yCCorCKMxvWT/a3xko4EYHVdeZoh00yI2TydXn6eyICDA==",
       "optionalDependencies": [
         "@napi-rs/keyring-darwin-arm64",
         "@napi-rs/keyring-darwin-x64",
@@ -226,12 +228,12 @@
       "os": ["darwin"],
       "scripts": true
     },
-    "patchright-core@1.52.5": {
-      "integrity": "sha512-8rnLVEK9jDZWzFPy2hCQrp4xhU7zgE8IqseZyjGkgxf+jpAWTuGNgIAlcsKZMfQrDL8j1mZgRIGNAQT00nk6QA==",
+    "patchright-core@1.61.1": {
+      "integrity": "sha512-d6Ju67DE6OzqlEX3WPvUX2SLEs6iMY1WERit//mpsrT98VHcztaUo0CBw2Lpxq25VdufVEiWEdcc0HnLwdiq6A==",
       "bin": true
     },
-    "patchright@1.52.5": {
-      "integrity": "sha512-wmRpsF9n02j0S+YDk0U3ouuWipHbUowwxbf/4K4G9ng311vvugoo8WndbU/fCsGtme8gYNfcEGcpfF6/L1NXHg==",
+    "patchright@1.61.1": {
+      "integrity": "sha512-kZWNZ2tunsBMTBWtARFVWaNvB739GOybTlIPLT91eyx0YERjtUjESawomwO0hnOh6jt1L3Sru0PK62ylYOfqQw==",
       "dependencies": [
         "patchright-core"
       ],
@@ -250,12 +252,12 @@
   "workspace": {
     "dependencies": [
       "jsr:@404wolf/xdg-portable@0.1",
-      "jsr:@cliffy/ansi@^1.0.0-rc.8",
-      "jsr:@cliffy/command@^1.0.0-rc.8",
-      "jsr:@david/dax@~0.43.2",
+      "jsr:@cliffy/ansi@^1.2.1",
+      "jsr:@cliffy/command@^1.2.1",
+      "jsr:@david/dax@0.49",
       "jsr:@std/path@^1.1.6",
-      "npm:@napi-rs/keyring@^1.1.8",
-      "npm:patchright@^1.52.5",
+      "npm:@napi-rs/keyring@^1.3.0",
+      "npm:patchright@^1.61.1",
       "npm:zod@^4.4.3"
     ]
   }

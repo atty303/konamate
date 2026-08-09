@@ -444,7 +444,12 @@ You need to provide audio output device that configured sample rate to 44100Hz.
 
 1. Activate [mise](https://mise.jdx.dev/).
 2. Run `mise install` in the project root to install the dependencies.
-3. Run `hk install --mise` to install the git hooks for formatting and linting.
+3. Run `mise run setup` to install the git hooks.
+
+Use `mise run check` for the fast formatting, linting, type, and unit test
+checks used during development. Run `mise run test` for all reproducible checks,
+including a compiled binary build. You can also run `mise run build` directly
+to build the CLI for the default architecture.
 
 To install the tool from source, run the following command:
 
