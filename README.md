@@ -258,6 +258,11 @@ without launcher.
   the default profile. The profile must already exist or be created by the same
   command.
 
+Placeholders are expanded everywhere they occur in a profile command. Values
+inserted by `%u`, `%t`, `%r`, and `%{key}` are shell-escaped before the command
+is executed. Placeholders cannot be nested inside shell expansions such as
+`$()`, `${}`, backticks, or process substitutions.
+
 Configuration files are validated when read. A missing configuration is
 treated as uninitialized, while malformed JSON, invalid fields, and I/O errors
 are reported instead of being replaced with defaults.

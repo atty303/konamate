@@ -1,5 +1,4 @@
 import * as path from "@std/path";
-import * as pathWin from "@std/path/windows";
 import xdg from "@404wolf/xdg-portable";
 import { colors } from "@cliffy/ansi/colors";
 import { Command } from "@cliffy/command";
@@ -15,6 +14,13 @@ import * as reg from "./winereg.ts";
 import { readRegistryFile } from "./winereg.ts";
 import { GameDefinition } from "./games.ts";
 import { startProxy } from "./obs.ts";
+import {
+  expandLaunchCommand,
+  needsInstallDir,
+  parseLaunchUrl,
+  resolveProfileCwd,
+  winPathToUnix,
+} from "./launch.ts";
 
 function configCommand(def: GameDefinition) {
   return new Command()
@@ -115,21 +121,6 @@ command string supports the following placeholders:
       await writeConfig(def.id, config);
       $.logStep(`Configuration for ${def.id} saved`);
     });
-}
-
-function winPathToUnix(pathInWin: string, winePrefix: string): string {
-  const parsedPathWin = pathWin.parse(pathInWin);
-  const drive = parsedPathWin.root[0].toLowerCase();
-  const pathUnixInDrive = path.fromFileUrl(pathWin.toFileUrl(pathWin.format({
-    dir: `\\${parsedPathWin.dir.replace(parsedPathWin.root, "")}`,
-    base: parsedPathWin.base,
-  })));
-
-  return path.join(
-    winePrefix,
-    `drive_${drive}`,
-    pathUnixInDrive,
-  );
 }
 
 async function extractIcon(
@@ -274,11 +265,7 @@ function runCommand(def: GameDefinition) {
           .noThrow();
       }
 
-      const parsed = new URL(url);
-      const token = parsed.searchParams.get("tk");
-      if (!token) {
-        throw new Error("No token found in URL");
-      }
+      const launchUrl = parseLaunchUrl(url, def.urlScheme);
 
       const selectedProfileName = await (async () => {
         if (config.runProfile) {
@@ -315,37 +302,39 @@ function runCommand(def: GameDefinition) {
         );
       }
 
-      const systemReg = await readRegistryFile(
-        path.join(config.env.WINEPREFIX, "system.reg"),
-      );
-      const installDir = reg.findValue(
-        systemReg,
-        def.registryKey,
-        "InstallDir",
-      );
-      $.logLight(`Install directory: ${installDir?.data}`);
+      const installDir = await (async () => {
+        if (!needsInstallDir(profile.command, profile.cwd)) return undefined;
 
-      const command = profile.command
-        .replace("%u", $.escapeArg(url))
-        .replace("%t", token)
-        .replace("%r", (installDir?.data.toString() || "").replace(/ /g, "\\ "))
-        .replace(
-          /%\{(.*?)\}/g,
-          (_, key: string) =>
-            $.escapeArg(
-              typeof def[key] === "string" ? def[key] : "",
-            ),
+        const systemReg = await readRegistryFile(
+          path.join(config.env.WINEPREFIX, "system.reg"),
         );
-
-      let cwd = profile.cwd;
-      if (profile.cwd) {
-        if (profile.cwd.includes("%r")) {
-          cwd = winPathToUnix(
-            profile.cwd.replace("%r", installDir?.data.toString() || ""),
-            config.env.WINEPREFIX,
+        const value = reg.findValue(
+          systemReg,
+          def.registryKey,
+          "InstallDir",
+        );
+        if (typeof value?.data !== "string") {
+          throw new Error(
+            `Installation directory not found in registry for ${def.id}`,
           );
         }
+        return value.data;
+      })();
+      if (installDir !== undefined) {
+        $.logLight(`Install directory: ${installDir}`);
       }
+
+      const command = expandLaunchCommand(profile.command, {
+        url: launchUrl.raw,
+        token: launchUrl.token,
+        installDir,
+        metadata: def,
+      });
+      const cwd = resolveProfileCwd(
+        profile.cwd,
+        installDir,
+        config.env.WINEPREFIX,
+      );
 
       const cmd0 = $.raw`${command}`.env(config.env).printCommand();
       const cmd = cwd ? cmd0.cwd(cwd) : cmd0;
