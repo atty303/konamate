@@ -14,14 +14,30 @@ run = [
 ]
 
 [tasks.check]
-description = "Run all checks"
-run = [
-    "deno lint",
-    "deno fmt --check",
-    "deno check src/main.ts tests/e2e/sdvx.ts tests/e2e/sensitive_test.ts",
-    "deno test",
-    "pkl eval hk.pkl >/dev/null",
-]
+description = "Check the repository or selected files"
+usage = 'arg "[files]..."'
+run = '''
+if [ -n "${usage_files:-}" ]; then
+    hk check ${usage_files}
+else
+    hk check --all
+fi
+'''
+
+[tasks.fix]
+description = "Fix the repository or selected files"
+usage = 'arg "[files]..."'
+run = '''
+if [ -n "${usage_files:-}" ]; then
+    hk fix ${usage_files}
+else
+    hk fix --all
+fi
+'''
+
+[tasks.setup]
+description = "Install repository hooks"
+run = "hk install --mise"
 
 [tasks."test:e2e:linux:sdvx"]
 description = "Run the live SDVX launch flow"
@@ -34,6 +50,10 @@ usage = 'flag "--arch <arch>" default="x86_64-unknown-linux-gnu"'
 run = [
     "deno compile -A --target ${usage_arch?} -o dist/konaste-${usage_arch?} src/main.ts",
 ]
+
+[tasks.test]
+description = "Run all reproducible checks and build the CLI"
+depends = ["check", "build"]
 
 [tasks.prepare-release]
 description = "Prepare for release"

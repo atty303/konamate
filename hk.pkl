@@ -11,6 +11,11 @@ local linters = new Mapping<String, Step> {
         fix = "deno lint --fix {{ files }}"
     }
 
+    ["deno_test"] {
+        glob = List("**/*_test.ts")
+        check = "deno test --allow-read --allow-write {{ files }}"
+    }
+
     ["pkl"] {
         glob = "*.pkl"
         check = "pkl eval {{files}} >/dev/null"
@@ -20,7 +25,7 @@ local linters = new Mapping<String, Step> {
 hooks {
     ["pre-commit"] {
         fix = true    // automatically modify files with available linter fixes
-        stash = "git" // stashes unstaged changes while running fix steps
+        stash = "patch-file"
         steps {
             ...linters // add all linters defined above
         }
@@ -32,6 +37,7 @@ hooks {
     // "fix" and "check" are special steps for `hk fix` and `hk check` commands
     ["fix"] {
         fix = true
+        stash = "patch-file"
         steps = linters
     }
     ["check"] {
