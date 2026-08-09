@@ -35,7 +35,7 @@ processes:
     environment:
     command: |
       vkcube --c 1
-      konamate $env.GAME run
+      konamate run $env.GAME
     availability:
       # Exit the whole processes when the game ends
       exit_on_end: true

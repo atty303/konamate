@@ -354,8 +354,8 @@ It will not read ~/.config/konamate or reuse Patchright browser storage.`);
     PULSE_SINK: options.pulseSink,
   };
   const configArgs = [
-    "sdvx",
     "config",
+    "sdvx",
     ...Object.entries(gameEnv).map(
       ([name, value]) => `--env.${name}=${value}`,
     ),
@@ -370,7 +370,7 @@ It will not read ~/.config/konamate or reuse Patchright browser storage.`);
   }
   const selectedProfile = await run(
     options.binary,
-    ["sdvx", "profile", "game", "--default"],
+    ["profile", "default", "sdvx", "game"],
     isolatedEnv,
   );
   if (!selectedProfile.success) {
@@ -382,7 +382,7 @@ It will not read ~/.config/konamate or reuse Patchright browser storage.`);
   }
   const browserConfigured = await run(
     options.binary,
-    ["config", "--browser", options.browser],
+    ["settings", "--browser", options.browser],
     isolatedEnv,
   );
   if (!browserConfigured.success) {
@@ -397,8 +397,8 @@ It will not read ~/.config/konamate or reuse Patchright browser storage.`);
   currentStage = "game";
   console.log("Authenticating and launching SDVX...");
   const game = await run(options.binary, [
-    "sdvx",
     "run",
+    "sdvx",
     "--passkey-service",
     options.passkeyService,
     "--passkey-name",

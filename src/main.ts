@@ -1,5 +1,5 @@
 import { colors } from "@cliffy/ansi/colors";
-import { Command, ValidationError } from "@cliffy/command";
+import { Command, EnumType, ValidationError } from "@cliffy/command";
 import { CompletionsCommand } from "@cliffy/command/completions";
 import { UpgradeCommand } from "@cliffy/command/upgrade";
 import { GithubProvider } from "@cliffy/command/upgrade/provider/github";
@@ -9,33 +9,60 @@ import {
   mergeGameDefinitions,
   readGameDefinitions,
 } from "./games.ts";
-import { gameCommand } from "./command.ts";
+import {
+  associateCommand,
+  configCommand,
+  execCommand,
+  obsWebSocketProxyCommand,
+  profileCommand,
+  runCommand,
+} from "./command.ts";
 import { APP_NAME, configDir } from "./app.ts";
 import $ from "@david/dax";
 import * as path from "@std/path";
 import versionJson from "../version.json" with { type: "json" };
-import { browserCommand } from "./browser.ts";
+import { authCommand } from "./browser.ts";
 import { controllerCommand } from "./controller.ts";
 import { secretCommand } from "./secret.ts";
 import { migrateCommand } from "./migrate.ts";
 import { settingsCommand } from "./settings.ts";
 
 async function main(): Promise<void> {
-  const userGamesPath = path.join(configDir(), "games.json");
+  const gameOperations = new Set([
+    "games",
+    "run",
+    "config",
+    "profile",
+    "associate",
+    "exec",
+    "obs-websocket-proxy",
+    "completions",
+  ]);
+  const shouldLoadUserGames = gameOperations.has(Deno.args[0]);
   let userGames: GameDefinition[] = [];
-  try {
-    userGames = await readGameDefinitions(userGamesPath);
-  } catch (error) {
-    if (!(error instanceof Deno.errors.NotFound)) throw error;
+  if (shouldLoadUserGames) {
+    const userGamesPath = path.join(configDir(), "games.json");
+    try {
+      userGames = await readGameDefinitions(userGamesPath);
+    } catch (error) {
+      if (!(error instanceof Deno.errors.NotFound)) throw error;
+    }
   }
   const games = mergeGameDefinitions(defaultGames, userGames);
+  const gamesById = new Map(games.map((game) => [game.id, game]));
+  const resolveGame = (id: string): GameDefinition => {
+    const game = gamesById.get(id);
+    if (!game) throw new Error(`Unknown game '${id}'`);
+    return game;
+  };
 
   const cmd = new Command()
     .name(APP_NAME)
     .version(versionJson)
-    .usage("<game> <command> [options]")
+    .usage("<command> [options]")
     .description("Manage Konaste games")
     .meta("deno", Deno.version.deno)
+    .globalType("game", new EnumType(games.map((game) => game.id)))
     .command("completions", new CompletionsCommand())
     .command(
       "upgrade",
@@ -50,7 +77,7 @@ async function main(): Promise<void> {
         );
       }),
     )
-    .command("ls", "List available games")
+    .command("games", "List available games")
     .option("--json", "Output in JSON format")
     .action((options) => {
       if (options.json) {
@@ -65,15 +92,20 @@ async function main(): Promise<void> {
         );
       }
     })
-    .command("config", settingsCommand)
+    .command("settings", settingsCommand)
     .command("migrate", migrateCommand)
-    .command("browser", browserCommand)
+    .command("auth", authCommand)
     .command("controller", controllerCommand)
-    .command("secret", secretCommand);
-
-  games.forEach((game) => {
-    cmd.command(game.id, gameCommand(game));
-  });
+    .command("secret", secretCommand)
+    .command("config", configCommand(resolveGame))
+    .command("profile", profileCommand(resolveGame))
+    .command("associate", associateCommand(resolveGame))
+    .command("exec", execCommand(resolveGame))
+    .command("run", runCommand(resolveGame))
+    .command(
+      "obs-websocket-proxy",
+      obsWebSocketProxyCommand(resolveGame),
+    );
   await cmd.parse();
 }
 

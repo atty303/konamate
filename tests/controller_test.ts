@@ -150,7 +150,7 @@ Deno.test("pressed reserves exit code 1 for a released controller", async () => 
     await Deno.writeTextFile(`${configDir}/games.json`, "not json");
     assertEquals(
       (await runPressed(["-d", "/dev/null"], xdgConfigHome)).code,
-      2,
+      1,
     );
   } finally {
     await Deno.remove(xdgConfigHome, { recursive: true });

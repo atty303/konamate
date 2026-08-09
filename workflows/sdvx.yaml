@@ -46,7 +46,7 @@ processes:
 
   # OBS WebSocket Proxy for extension
   obs-ws-proxy:
-    command: "konamate $env.GAME obs-websocket-proxy"
+    command: "konamate obs-websocket-proxy $env.GAME"
     availability:
       restart: on_failure
     readiness_probe:

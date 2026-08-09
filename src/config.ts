@@ -100,7 +100,7 @@ export async function readConfig(game: GameDefinition): Promise<GameConfig> {
   } catch (error) {
     if (error instanceof Deno.errors.NotFound) {
       throw new Error(
-        `Configuration not found at ${filePath}. Please run '${game.id} config' first.`,
+        `Configuration not found at ${filePath}. Please run 'konamate config ${game.id}' first.`,
         { cause: error },
       );
     }

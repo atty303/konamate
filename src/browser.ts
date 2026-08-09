@@ -293,8 +293,8 @@ function launchCommand() {
     });
 }
 
-export const browserCommand = new Command()
-  .description("Browser management commands")
+export const authCommand = new Command()
+  .description("Authentication commands")
   .command("register-passkey", registerCommand())
   .command("record", recordCommand())
   .command("launch", launchCommand());

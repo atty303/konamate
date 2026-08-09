@@ -82,7 +82,7 @@ konamate migrate
 Existing files in the new locations take precedence, and legacy data is left
 unchanged. Keyring entries are copied from the legacy service when first used.
 Wine prefixes and desktop URL associations are not migrated. If you use the
-optional desktop integration, run `konamate <game> associate` again for each
+optional desktop integration, run `konamate associate <game>` again for each
 configured game, then remove the old executable when it is no longer needed.
 
 ## Minimal steps to launch the games
@@ -91,17 +91,17 @@ Konamate automatically detects a compatible Chromium browser and saves its path
 when a browser command is first used. To detect and save it in advance, run:
 
 ```bash
-konamate config --detect
+konamate settings --detect
 ```
 
-Use `konamate config --browser /path/to/chromium` when automatic detection does
+Use `konamate settings --browser /path/to/chromium` when automatic detection does
 not find the intended browser.
 
 Register a passkey with the virtual authenticator. Complete the registration on
 the KONAMI account page opened by the command:
 
 ```bash
-konamate browser register-passkey
+konamate auth register-passkey
 ```
 
 You need to prepare the PulseAudio sink that configured sample rate to 44100Hz
@@ -122,8 +122,8 @@ To persist the sink, you can configure PipeWire configuration.
 1. Run the following command to configure and create the wine prefix:
 
 ```bash
-konamate infinitas config --env.PROTONPATH=GE-Proton10-9 --env.PULSE_SINK=konamate-sink
-konamate infinitas exec umu-run wineboot --init
+konamate config infinitas --env.PROTONPATH=GE-Proton10-9 --env.PULSE_SINK=konamate-sink
+konamate exec infinitas umu-run wineboot --init
 ```
 
 2. Download the installer from the
@@ -132,13 +132,13 @@ konamate infinitas exec umu-run wineboot --init
 3. Run the following command to install it:
 
 ```bash
-konamate infinitas exec WINEDLLOVERRIDES="ieframe=d" umu-run msiexec /i ~/Downloads/infinitas_installer_2022060800.msi
+konamate exec infinitas WINEDLLOVERRIDES="ieframe=d" umu-run msiexec /i ~/Downloads/infinitas_installer_2022060800.msi
 ```
 
 4. Authenticate and launch the game:
 
 ```bash
-konamate infinitas run
+konamate run infinitas
 ```
 
 5. After the launcher is started, click the `UPDATE` button to update the game.
@@ -162,8 +162,8 @@ konamate infinitas run
 1. Run the following command to configure and create the wine prefix:
 
 ```bash
-konamate sdvx config --env.PROTONPATH=GE-Proton10-9 --env.PULSE_SINK=konamate-sink
-konamate sdvx exec umu-run wineboot --init
+konamate config sdvx --env.PROTONPATH=GE-Proton10-9 --env.PULSE_SINK=konamate-sink
+konamate exec sdvx umu-run wineboot --init
 ```
 
 2. Download the installer from the
@@ -173,13 +173,13 @@ konamate sdvx exec umu-run wineboot --init
 3. Run the following command to install it:
 
 ```bash
-konamate sdvx exec WINEDLLOVERRIDES="ieframe=d" umu-run msiexec /i ~/Downloads/sdvx_installer_2022011800.msi
+konamate exec sdvx WINEDLLOVERRIDES="ieframe=d" umu-run msiexec /i ~/Downloads/sdvx_installer_2022011800.msi
 ```
 
 4. Authenticate and launch the game:
 
 ```bash
-konamate sdvx run
+konamate run sdvx
 ```
 
 <img width="502" height="495" alt="Screen Shot 2025-07-14 at 16 01 02" src="https://github.com/user-attachments/assets/2eaab921-bb50-49bc-99c8-e1418125662e" />
@@ -194,8 +194,8 @@ konamate sdvx run
 1. Run the following command to configure the wine prefix:
 
 ```bash
-konamate gitadora config --env.PROTONPATH=GE-Proton10-9 --env.PULSE_SINK=konamate-sink
-konamate gitadora exec umu-run wineboot --init
+konamate config gitadora --env.PROTONPATH=GE-Proton10-9 --env.PULSE_SINK=konamate-sink
+konamate exec gitadora umu-run wineboot --init
 ```
 
 2. Download the installer from the
@@ -204,13 +204,13 @@ konamate gitadora exec umu-run wineboot --init
 3. Run the following command to install it:
 
 ```bash
-konamate gitadora exec WINEDLLOVERRIDES="ieframe=d" umu-run msiexec /i ~/Downloads/GITADORA_installer.msi
+konamate exec gitadora WINEDLLOVERRIDES="ieframe=d" umu-run msiexec /i ~/Downloads/GITADORA_installer.msi
 ```
 
 4. Authenticate and launch the game:
 
 ```bash
-konamate gitadora run
+konamate run gitadora
 ```
 
 </details>
@@ -219,7 +219,7 @@ konamate gitadora run
 
 You can explore the available commands by specifying the `--help` option.
 
-### `konamate config`
+### `konamate settings`
 
 This command displays or stores application-wide settings. With no options it
 only displays the saved settings. Use `--detect` to find a compatible browser
@@ -230,9 +230,9 @@ When no browser is configured, browser-related commands search `PATH`, the user
 Flatpak exports, and the system Flatpak exports for Google Chrome, Chromium,
 Brave, Microsoft Edge, or Vivaldi, in that order. The detected path is saved for
 future use. An existing setting is never replaced automatically; use
-`konamate config --detect` to detect again.
+`konamate settings --detect` to detect again.
 
-### `konamate ls`
+### `konamate games`
 
 This command lists the available games that can be managed by this tool.
 
@@ -251,33 +251,31 @@ specific button, or any button when `--button` is omitted. It produces no
 output and exits with status 0 when pressed, 1 when not pressed, and 2 when the
 device cannot be read.
 
-### `konamate <game> config`
+### `konamate config <game>`
 
 This command configures the environment for the specified game. If user
 configuration is not initialized, it will create with the default configuration.
 
-- `konamate infinitas config`: Shows the current configuration for the game.
-- `konamate infinitas config --env.NAME=<value>`: Sets the environment variable
+- `konamate config infinitas`: Shows the current configuration for the game.
+- `konamate config infinitas --env.NAME=<value>`: Sets the environment variable
   `NAME` to `value`. Use this to set umu-launcher, Proton or Wine environment
   variables.
 
-### `konamate <game> profile`
+### `konamate profile`
 
 This command manages the profiles for the specified game. Profiles are used to
 configure the command to run the game when launching from browser. Some default
 game definitions have preconfigured profiles for running the game directly
 without launcher.
 
-- `konamate infinitas profile`: Lists the available profiles for the game.
-- `konamate infinitas profile --default`: Unsets the default profile. If no
-  profile is set as default, selection will be prompted when launching. This is
-  stored as `"runProfile": null` in the game configuration.
-- `konamate infinitas profile <name> --command <command>`: Creates or updates a
-  profile with the specified name and command.
-- `konamate infinitas profile <name> --delete`: Deletes the specified profile.
-- `konamate infinitas profile <name> --default`: Sets the specified profile as
-  the default profile. The profile must already exist or be created by the same
-  command.
+- `konamate profile list infinitas`: Lists the available profiles.
+- `konamate profile set infinitas <name> --command <command>`: Creates or
+  replaces a profile.
+- `konamate profile delete infinitas <name>`: Deletes a profile.
+- `konamate profile default infinitas <name>`: Sets the default profile.
+- `konamate profile default infinitas --unset`: Unsets the default profile. If
+  no profile is set as default, selection will be prompted when launching. This
+  is stored as `"runProfile": null` in the game configuration.
 
 Placeholders are expanded everywhere they occur in a profile command. Values
 inserted by `%u`, `%t`, `%r`, and `%{key}` are shell-escaped before the command
@@ -296,22 +294,22 @@ You can use the following placeholders in the command string:
 - `%{key}`: The value of the game definition `key`.
   - `%{id}`: The game ID (e.g. 'infinitas', 'sdvx', etc.).
 
-### `konamate <game> associate`
+### `konamate associate <game>`
 
 This command registers the URL scheme for the specified game in the desktop
 environment. It is optional and allows a regular browser to launch the game
 through a desktop entry.
 
-### `konamate <game> exec <...command>`
+### `konamate exec <game> <...command>`
 
 This command executes the specified command with configured environment
 variables.
 
-- `konamate infinitas exec umu-run winetricks <verbs>`: Runs Winetricks with the
+- `konamate exec infinitas umu-run winetricks <verbs>`: Runs Winetricks with the
   specified verbs.
-- `konamate infinitas exec umu-run winecfg`: Opens the Wine configuration dialog.
+- `konamate exec infinitas umu-run winecfg`: Opens the Wine configuration dialog.
 
-### `konamate <game> run [url]`
+### `konamate run <game> [url]`
 
 Without a URL, this command authenticates in the configured browser, captures
 the game launch URL, and executes the selected profile. Use `--profile NAME` to
@@ -331,7 +329,7 @@ Linux kernel 6.14 or newer, and becomes available when `/dev/ntsync` exists.
 To enable ntsync, run the following command:
 
 ```bash
-konamate infinitas config --env.PROTON_USE_NTSYNC=1
+konamate config infinitas --env.PROTON_USE_NTSYNC=1
 ```
 
 ### Use gamescope
@@ -340,13 +338,14 @@ To run the game with [gamescope](https://github.com/ValveSoftware/gamescope),
 you can use the following command to configure the profile:
 
 ```bash
-konamate infinitas profile gamescope --command "gamescope -f -r 120 -w 1920 -h 1080 --mangoapp -- umu-run %r\\game\\app\\bm2dx.exe -t %t" --default
+konamate profile set infinitas gamescope --command "gamescope -f -r 120 -w 1920 -h 1080 --mangoapp -- umu-run %r\\game\\app\\bm2dx.exe -t %t"
+konamate profile default infinitas gamescope
 ```
 
 To revert this configuration when game update is required, you can run:
 
 ```bash
-konamate infinitas profile launcher --default
+konamate profile default infinitas launcher
 ```
 
 ### Setup low latency audio with PipeWire
@@ -435,7 +434,7 @@ systemctl --user restart pipewire pipewire-pulse
 Configure the game side audio buffer size to reduce latency:
 
 ```bash
-konamate infinitas config --env.PULSE_LATENCY_MSEC=60
+konamate config infinitas --env.PULSE_LATENCY_MSEC=60
 ```
 
 Lowering the value will reduce latency, but may cause audio dropouts if your
@@ -468,7 +467,7 @@ Maybe Koanste games expect the system to be configured for Japanese locale. If
 you encounter issues, try setting the locale to Japanese may help.
 
 ```bash
-konamate infinitas config --env.LANG=ja_JP.UTF-8
+konamate config infinitas --env.LANG=ja_JP.UTF-8
 ```
 
 ### Launching the game fails

@@ -119,7 +119,7 @@ export async function resolveBrowserExecutable(
 
 function browserNotFoundError(cause?: unknown): Error {
   return new Error(
-    "No compatible Chromium browser was detected. Run 'konamate config --browser <path>' to configure one.",
+    "No compatible Chromium browser was detected. Run 'konamate settings --browser <path>' to configure one.",
     { cause },
   );
 }

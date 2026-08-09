@@ -1,7 +1,7 @@
 import * as path from "@std/path";
 import xdg from "@404wolf/xdg-portable";
 import { colors } from "@cliffy/ansi/colors";
-import { Command } from "@cliffy/command";
+import { Command, ValidationError } from "@cliffy/command";
 import {
   GameConfig,
   readConfig,
@@ -25,19 +25,31 @@ import {
 import { obtainLaunchUrl } from "./browser.ts";
 import { KEYRING_SERVICE } from "./app.ts";
 
-function configCommand(def: GameDefinition) {
+export type GameResolver = (id: string) => GameDefinition;
+
+function resolveGameArgument(
+  resolveGame: GameResolver,
+  game: unknown,
+): GameDefinition {
+  if (typeof game !== "string") throw new Error("Game ID must be a string");
+  return resolveGame(game);
+}
+
+export function configCommand(resolveGame: GameResolver) {
   return new Command()
     .description("Set configuration for the game")
     .option(
       "--env.* [value:string]",
       "Set environment variable (empty value to unset)",
     )
-    .example("Show current configuration", "konamate game config")
+    .arguments("<game:game>")
+    .example("Show current configuration", "konamate config infinitas")
     .example(
       "Set environment variables",
-      "konamate game config --env WINEPREFIX=/path/to/prefix",
+      "konamate config infinitas --env.WINEPREFIX=/path/to/prefix",
     )
-    .action(async (options) => {
+    .action(async (options, game) => {
+      const def = resolveGameArgument(resolveGame, game);
       const defaultConfig = {
         env: {
           WINEPREFIX: path.join(
@@ -67,7 +79,7 @@ function configCommand(def: GameDefinition) {
 
       $.log(JSON.stringify(config, null, 2));
       if (Object.keys(options).length === 0) {
-        Deno.exit(0);
+        return;
       }
 
       await writeConfig(def.id, config);
@@ -75,55 +87,93 @@ function configCommand(def: GameDefinition) {
     });
 }
 
-function profileCommand(def: GameDefinition) {
-  return new Command()
-    .description(`Manage launch profiles for the game
+function profileDescription(): string {
+  return `Manage launch profiles for a game
 
 command string supports the following placeholders:
   %u: URL passed to the game
   %t: Token from the URL
   %r: Installation directory as windows format (e.g. C:\\Games)
   %{id}: Game ID (e.g. 'infinitas', 'sdvx', etc.)
-    `)
-    .option("--default", "Set this profile as the default")
-    .option(
-      "--command <command:string>",
-      `Set the launch command for the profile`,
-    )
-    .option("--cwd <dir:file>", "Set the working directory for the profile")
-    .option("--delete", "Delete the profile")
-    .arguments("[name:string]")
-    .example("List all profiles", "konamate game profile")
-    .example("Unset the default profile", "konamate game profile --default")
-    .action(async (options, name) => {
-      const current = await readConfig(def);
-      const hasChanges = Object.keys(options).length > 0;
-      const config = hasChanges
-        ? updateProfile(current, {
-          name,
-          command: options.command,
-          cwd: options.cwd,
-          delete: options.delete,
-          setDefault: options.default,
-        })
-        : current;
+  `;
+}
 
-      $.log("Available profiles:");
-      for (const [name, profile] of Object.entries(config.profiles)) {
-        const isDefault = config.runProfile === name;
-        $.log(
-          `${
-            isDefault
-              ? colors.red.bold(`${name} (default)`)
-              : colors.yellow(name)
-          }: ${profile.command}`,
-        );
-      }
-      if (!hasChanges) return;
+function logProfiles(config: GameConfig): void {
+  $.log("Available profiles:");
+  for (const [name, profile] of Object.entries(config.profiles)) {
+    const isDefault = config.runProfile === name;
+    $.log(
+      `${
+        isDefault ? colors.red.bold(`${name} (default)`) : colors.yellow(name)
+      }: ${profile.command}`,
+    );
+  }
+}
 
+export function profileCommand(resolveGame: GameResolver) {
+  const list = new Command()
+    .description("List launch profiles")
+    .arguments("<game:game>")
+    .action(async (_, game) => {
+      logProfiles(await readConfig(resolveGameArgument(resolveGame, game)));
+    });
+
+  const set = new Command()
+    .description("Create or replace a launch profile")
+    .option("--command <command:string>", "Launch command", {
+      required: true,
+    })
+    .option("--cwd <dir:file>", "Working directory for the profile")
+    .arguments("<game:game> <name:string>")
+    .action(async (options, game, name) => {
+      const def = resolveGameArgument(resolveGame, game);
+      const config = updateProfile(await readConfig(def), {
+        name,
+        command: options.command,
+        cwd: options.cwd,
+      });
       await writeConfig(def.id, config);
       $.logStep(`Configuration for ${def.id} saved`);
     });
+
+  const deleteProfile = new Command()
+    .description("Delete a launch profile")
+    .arguments("<game:game> <name:string>")
+    .action(async (_, game, name) => {
+      const def = resolveGameArgument(resolveGame, game);
+      const config = updateProfile(await readConfig(def), {
+        name,
+        delete: true,
+      });
+      await writeConfig(def.id, config);
+      $.logStep(`Configuration for ${def.id} saved`);
+    });
+
+  const defaultProfile = new Command()
+    .description("Set or unset the default launch profile")
+    .option("--unset", "Unset the default profile")
+    .arguments("<game:game> [name:string]")
+    .action(async (options, game, name) => {
+      if (options.unset === (name !== undefined)) {
+        throw new ValidationError(
+          "Provide either a profile name or --unset",
+        );
+      }
+      const def = resolveGameArgument(resolveGame, game);
+      const config = updateProfile(await readConfig(def), {
+        name,
+        setDefault: true,
+      });
+      await writeConfig(def.id, config);
+      $.logStep(`Configuration for ${def.id} saved`);
+    });
+
+  return new Command()
+    .description(profileDescription())
+    .command("list", list)
+    .command("set", set)
+    .command("delete", deleteProfile)
+    .command("default", defaultProfile);
 }
 
 async function extractIcon(
@@ -161,11 +211,13 @@ async function extractIcon(
   await $`magick ${name} ${dest}`.printCommand();
 }
 
-function associateCommand(def: GameDefinition) {
+export function associateCommand(resolveGame: GameResolver) {
   return new Command()
-    .description(`Associate the URL scheme "${def.urlScheme}://" with the game`)
+    .description("Associate a game URL scheme with the game")
     .option("--self-path <path:file>", "Path to the this executable")
-    .action(async (options) => {
+    .arguments("<game:game>")
+    .action(async (options, game) => {
+      const def = resolveGameArgument(resolveGame, game);
       // If run as a Deno script, require the --self-path option
       const selfPath = Deno.execPath().includes("deno")
         ? options.selfPath
@@ -207,7 +259,7 @@ ${
             : ""
         }
 Comment=Play ${def.name} on Konaste
-Exec=${selfPath} ${def.id} run --notify %u
+Exec=${selfPath} run ${def.id} --notify %u
 Type=Application
 Categories=Game;
 Terminal=false
@@ -235,11 +287,12 @@ ${iconName ? `Icon=${iconName}` : ""}`;
     });
 }
 
-function execCommand(def: GameDefinition) {
+export function execCommand(resolveGame: GameResolver) {
   return new Command()
     .description("Run a command in same environment as the `run` subcommand")
-    .arguments("<...command:string>")
-    .action(async (_, ...command) => {
+    .arguments("<game:game> <...command:string>")
+    .action(async (_, game, ...command) => {
+      const def = resolveGameArgument(resolveGame, game);
       const config = await readConfig(def);
       await $.raw`${command.join(" ")}`.env(config.env).printCommand();
     });
@@ -271,7 +324,7 @@ function selectProfileInTerminal(names: string[]): Promise<string | undefined> {
   );
 }
 
-function runCommand(def: GameDefinition) {
+export function runCommand(resolveGame: GameResolver) {
   return new Command()
     .description(
       "Authenticate in the configured browser and run the game, or run a supplied launch URL",
@@ -290,8 +343,9 @@ function runCommand(def: GameDefinition) {
     .option("--passkey-name <name:string>", "Name of the passkey", {
       default: "passkey-default",
     })
-    .arguments("[url:string]")
-    .action(async (options, url) => {
+    .arguments("<game:game> [url:string]")
+    .action(async (options, game, url) => {
+      const def = resolveGameArgument(resolveGame, game);
       const config = await readConfig(def);
       const selector = options.notify
         ? (names: string[]) => selectProfileWithNotification(def, names)
@@ -380,7 +434,7 @@ function winePathToUnix(winePath: string, winePrefix: string): string {
   return unixPath;
 }
 
-function obsWebSocketProxyCommand(def: GameDefinition) {
+export function obsWebSocketProxyCommand(resolveGame: GameResolver) {
   return new Command()
     .description($.dedent`
       Start a WebSocket proxy for OBS
@@ -406,7 +460,9 @@ function obsWebSocketProxyCommand(def: GameDefinition) {
       default: 4456,
     })
     .option("-v, --verbose", "Enable verbose logging")
-    .action(async (options) => {
+    .arguments("<game:game>")
+    .action(async (options, game) => {
+      const def = resolveGameArgument(resolveGame, game);
       const config = await readConfig(def);
       if (!config.env.WINEPREFIX) {
         throw new Error(
@@ -427,15 +483,4 @@ function obsWebSocketProxyCommand(def: GameDefinition) {
         },
       });
     });
-}
-
-export function gameCommand(def: GameDefinition) {
-  return new Command()
-    .description(`Commands for ${def.name}`)
-    .command("config", configCommand(def))
-    .command("profile", profileCommand(def))
-    .command("associate", associateCommand(def))
-    .command("exec", execCommand(def))
-    .command("run", runCommand(def))
-    .command("obs-websocket-proxy", obsWebSocketProxyCommand(def));
 }
