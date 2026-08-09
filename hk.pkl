@@ -25,7 +25,7 @@ local linters = new Mapping<String, Step> {
 hooks {
     ["pre-commit"] {
         fix = true    // automatically modify files with available linter fixes
-        stash = "patch-file"
+        stash = null
         steps {
             ...linters // add all linters defined above
         }
@@ -37,7 +37,7 @@ hooks {
     // "fix" and "check" are special steps for `hk fix` and `hk check` commands
     ["fix"] {
         fix = true
-        stash = "patch-file"
+        stash = null
         steps = linters
     }
     ["check"] {
