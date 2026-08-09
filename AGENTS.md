@@ -1,5 +1,12 @@
 # Repository Guidance
 
+## Repository Assets
+
+- The root `workflows/` directory contains personal usage examples. Do not
+  modify or maintain it unless explicitly requested.
+- Treat all other repository content, including `.github/workflows/`, as
+  konamate assets to maintain.
+
 ## Verification
 
 - Use `mise run check` as the common entry point for local and CI checks. Keep
