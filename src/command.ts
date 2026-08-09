@@ -7,6 +7,7 @@ import {
   GameConfig,
   readConfig,
   tryReadConfig,
+  updateProfile,
   writeConfig,
 } from "./config.ts";
 import $ from "@david/dax";
@@ -41,25 +42,19 @@ function configCommand(def: GameDefinition) {
         profiles: def.profiles,
         runProfile: def.runProfile,
       };
-      const config0 = {
+      const config0: GameConfig = {
         ...defaultConfig,
-        ...(await tryReadConfig(def.id) ?? {}),
+        ...(await tryReadConfig(def) ?? {}),
       };
-      const config = {
-        ...config0,
-        env: {
-          ...config0.env,
-          ...options.env,
-        } as Record<string, string>,
-        runProfile: config0.runProfile ?? def.runProfile,
-      };
-      for (
-        const [key, _] of Object.entries(options.env ?? {}).filter((
-          [_, value],
-        ) => value === true)
-      ) {
-        delete config.env[key];
+      const env = { ...config0.env };
+      for (const [key, value] of Object.entries(options.env ?? {})) {
+        if (value === true) delete env[key];
+        else if (typeof value === "string") env[key] = value;
       }
+      const config: GameConfig = {
+        ...config0,
+        env,
+      };
 
       $.log(JSON.stringify(config, null, 2));
       if (Object.keys(options).length === 0) {
@@ -92,17 +87,17 @@ command string supports the following placeholders:
     .example("List all profiles", "konaste game profile")
     .example("Unset the default profile", "konaste game profile --default")
     .action(async (options, name) => {
-      const config = await readConfig(def.id);
-
-      if (options.delete && name) {
-        delete config.profiles[name];
-      } else if (options.command && name) {
-        config.profiles[name] = { command: options.command, cwd: options.cwd };
-      }
-
-      if (options.default) {
-        config.runProfile = name;
-      }
+      const current = await readConfig(def);
+      const hasChanges = Object.keys(options).length > 0;
+      const config = hasChanges
+        ? updateProfile(current, {
+          name,
+          command: options.command,
+          cwd: options.cwd,
+          delete: options.delete,
+          setDefault: options.default,
+        })
+        : current;
 
       $.log("Available profiles:");
       for (const [name, profile] of Object.entries(config.profiles)) {
@@ -115,9 +110,7 @@ command string supports the following placeholders:
           }: ${profile.command}`,
         );
       }
-      if (Object.keys(options).length === 0) {
-        return;
-      }
+      if (!hasChanges) return;
 
       await writeConfig(def.id, config);
       $.logStep(`Configuration for ${def.id} saved`);
@@ -187,7 +180,7 @@ function associateCommand(def: GameDefinition) {
         throw new Error("--self-path is required");
       }
 
-      const config = await readConfig(def.id);
+      const config = await readConfig(def);
 
       $.logStep(`Extracting icon for ${def.id}`);
       const iconName = await (async () => {
@@ -253,7 +246,7 @@ function execCommand(def: GameDefinition) {
     .description("Run a command in same environment as the `run` subcommand")
     .arguments("<...command:string>")
     .action(async (_, ...command) => {
-      const config = await readConfig(def.id);
+      const config = await readConfig(def);
       await $.raw`${command.join(" ")}`.env(config.env).printCommand();
     });
 }
@@ -273,7 +266,7 @@ function runCommand(def: GameDefinition) {
 
       $.logStep(`Launching ${def.id} with URL: ${url}`);
 
-      const config = await readConfig(def.id);
+      const config = await readConfig(def);
 
       // This command is expected to be run from a desktop entry, so notify the user
       if (options.notify) {
@@ -340,7 +333,7 @@ function runCommand(def: GameDefinition) {
           /%\{(.*?)\}/g,
           (_, key: string) =>
             $.escapeArg(
-              (def as unknown as Record<string, string | undefined>)[key] || "",
+              typeof def[key] === "string" ? def[key] : "",
             ),
         );
 
@@ -397,7 +390,7 @@ function obsWebSocketProxyCommand(def: GameDefinition) {
     })
     .option("-v, --verbose", "Enable verbose logging")
     .action(async (options) => {
-      const config = await readConfig(def.id);
+      const config = await readConfig(def);
       if (!config.env.WINEPREFIX) {
         throw new Error(
           `WINEPREFIX is not set in the configuration for ${def.id}`,

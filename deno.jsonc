@@ -5,8 +5,9 @@
     "@cliffy/command": "jsr:@cliffy/command@^1.0.0-rc.8",
     "@david/dax": "jsr:@david/dax@^0.43.2",
     "@napi-rs/keyring": "npm:@napi-rs/keyring@^1.1.8",
-    "@std/path": "jsr:@std/path@^1.1.1",
-    "patchright": "npm:patchright@^1.52.5"
+    "@std/path": "jsr:@std/path@^1.1.6",
+    "patchright": "npm:patchright@^1.52.5",
+    "zod": "npm:zod@^4.4.3"
   },
   "nodeModulesDir": "auto"
 }

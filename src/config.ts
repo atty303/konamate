@@ -1,38 +1,106 @@
 import * as path from "@std/path";
 import xdg from "@404wolf/xdg-portable";
 import $ from "@david/dax";
-import { GameProfile } from "./games.ts";
+import { z } from "zod";
+import {
+  GameDefinition,
+  GameProfileSchema,
+  ProfileNameSchema,
+} from "./games.ts";
+import { readJsonFile } from "./json.ts";
 
-export type GameConfig = {
-  env: Record<string, string>;
-  profiles: Record<string, GameProfile>;
-  runProfile: string | undefined;
+const GameConfigFields = {
+  env: z.record(z.string(), z.string()),
+  profiles: z.record(ProfileNameSchema, GameProfileSchema),
 };
 
-export const configDir = path.join(xdg.config(), "konaste");
+export const GameConfigSchema = z.object({
+  ...GameConfigFields,
+  runProfile: ProfileNameSchema.nullable(),
+}).strict().superRefine((config, context) => {
+  if (
+    typeof config.runProfile === "string" &&
+    !Object.hasOwn(config.profiles, config.runProfile)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["runProfile"],
+      message: `Profile '${config.runProfile}' does not exist`,
+    });
+  }
+});
 
-function configPath(game: string) {
-  return path.join(configDir, `${game}.json`);
+const StoredGameConfigSchema = z.object({
+  ...GameConfigFields,
+  runProfile: ProfileNameSchema.nullable().optional(),
+}).strict().superRefine((config, context) => {
+  if (
+    typeof config.runProfile === "string" &&
+    !Object.hasOwn(config.profiles, config.runProfile)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["runProfile"],
+      message: `Profile '${config.runProfile}' does not exist`,
+    });
+  }
+});
+
+export type GameConfig = z.infer<typeof GameConfigSchema>;
+
+export function configDir() {
+  return path.join(xdg.config(), "konaste");
+}
+
+export function configPath(game: string) {
+  return path.join(configDir(), `${game}.json`);
 }
 
 export async function tryReadConfig(
-  gameId: string,
+  game: GameDefinition,
 ): Promise<GameConfig | undefined> {
   try {
-    return await readConfig(gameId);
-  } catch (_err) {
-    return undefined;
+    return await readStoredConfig(game);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return undefined;
+    throw error;
   }
 }
 
-export async function readConfig(gameId: string): Promise<GameConfig> {
-  const path = $.path(configPath(gameId));
-  if (!await path.exists()) {
-    throw new Error(
-      `Configuration not found. Please run '${gameId} configure' first.`,
-    );
+export async function readConfig(game: GameDefinition): Promise<GameConfig> {
+  const filePath = configPath(game.id);
+  try {
+    return await readStoredConfig(game);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      throw new Error(
+        `Configuration not found at ${filePath}. Please run '${game.id} config' first.`,
+        { cause: error },
+      );
+    }
+    throw error;
   }
-  return await path.readJson();
+}
+
+async function readStoredConfig(game: GameDefinition): Promise<GameConfig> {
+  const stored = await readJsonFile(
+    configPath(game.id),
+    StoredGameConfigSchema,
+  );
+  return normalizeConfig(stored, game);
+}
+
+export function normalizeConfig(
+  stored: unknown,
+  game: GameDefinition,
+): GameConfig {
+  const parsed = StoredGameConfigSchema.parse(stored);
+  return GameConfigSchema.parse({
+    ...parsed,
+    runProfile: parsed.runProfile === undefined
+      ? game.runProfile
+      : parsed.runProfile,
+  });
 }
 
 export async function writeConfig(
@@ -41,5 +109,53 @@ export async function writeConfig(
 ): Promise<void> {
   const path = $.path(configPath(gameId));
   await path.parent()?.ensureDir();
-  await path.writeJsonPretty(config);
+  await path.writeJsonPretty(GameConfigSchema.parse(config));
+}
+
+export type ProfileUpdate = {
+  name?: string;
+  command?: string;
+  cwd?: string;
+  delete?: boolean;
+  setDefault?: boolean;
+};
+
+export function updateProfile(
+  config: GameConfig,
+  update: ProfileUpdate,
+): GameConfig {
+  const profiles = { ...config.profiles };
+  const name = update.name === undefined
+    ? undefined
+    : ProfileNameSchema.parse(update.name);
+
+  if (update.delete && update.command) {
+    throw new Error("--delete and --command cannot be used together");
+  }
+  if ((update.delete || update.command || update.cwd) && !name) {
+    throw new Error("A profile name is required");
+  }
+  if (update.cwd && !update.command) {
+    throw new Error("--cwd requires --command");
+  }
+
+  if (update.delete && name) {
+    if (!Object.hasOwn(profiles, name)) {
+      throw new Error(`Profile '${name}' does not exist`);
+    }
+    delete profiles[name];
+  } else if (update.command && name) {
+    profiles[name] = { command: update.command, cwd: update.cwd };
+  }
+
+  let runProfile = config.runProfile;
+  if (update.delete && name === runProfile) runProfile = null;
+  if (update.setDefault) {
+    if (name && !Object.hasOwn(profiles, name)) {
+      throw new Error(`Profile '${name}' does not exist`);
+    }
+    runProfile = name ?? null;
+  }
+
+  return GameConfigSchema.parse({ ...config, profiles, runProfile });
 }

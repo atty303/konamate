@@ -1,20 +1,45 @@
-export type GameProfile = {
-  command: string;
-  cwd?: string;
+import { z } from "zod";
+import { readJsonFile } from "./json.ts";
+
+export const GameProfileSchema = z.object({
+  command: z.string().min(1),
+  cwd: z.string().optional(),
+}).strict();
+
+export type GameProfile = z.infer<typeof GameProfileSchema>;
+
+export const ProfileNameSchema = z.string().min(1).refine(
+  (name) => name !== "__proto__",
+  { message: "Profile name '__proto__' is reserved" },
+);
+
+const GameDefinitionFields = {
+  id: z.string().min(1),
+  name: z.string().min(1),
+  nameLocalized: z.record(z.string(), z.string()).optional(),
+  urlScheme: z.string().min(1),
+  loginUrl: z.url(),
+  registryKey: z.string().min(1),
+  profiles: z.record(ProfileNameSchema, GameProfileSchema),
+  runProfile: ProfileNameSchema,
 };
 
-export type GameDefinition = {
-  id: string;
-  name: string;
-  nameLocalized?: Record<string, string>;
-  urlScheme: string;
-  loginUrl: string;
-  registryKey: string;
-  profiles: Record<string, GameProfile>;
-  runProfile: string;
-};
+export const GameDefinitionSchema = z.object(GameDefinitionFields)
+  .catchall(z.string())
+  .superRefine((game, context) => {
+    if (!Object.hasOwn(game.profiles, game.runProfile)) {
+      context.addIssue({
+        code: "custom",
+        path: ["runProfile"],
+        message: `Profile '${game.runProfile}' does not exist`,
+      });
+    }
+  });
 
-export const defaultGames: GameDefinition[] = [
+export const GameDefinitionsSchema = z.array(GameDefinitionSchema);
+export type GameDefinition = z.infer<typeof GameDefinitionSchema>;
+
+export const defaultGames = GameDefinitionsSchema.parse([
   {
     id: "infinitas",
     name: "beatmania IIDX INFINITAS",
@@ -76,4 +101,17 @@ export const defaultGames: GameDefinition[] = [
 
     runProfile: "launcher",
   },
-];
+]);
+
+export function mergeGameDefinitions(
+  defaults: GameDefinition[],
+  overrides: GameDefinition[],
+): GameDefinition[] {
+  const games = new Map(defaults.map((game) => [game.id, game]));
+  for (const game of overrides) games.set(game.id, game);
+  return [...games.values()];
+}
+
+export function readGameDefinitions(filePath: string) {
+  return readJsonFile(filePath, GameDefinitionsSchema);
+}

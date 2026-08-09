@@ -210,7 +210,9 @@ This command lists the available games that can be managed by this tool.
 
 You can add new games by creating a game definition file in the
 `~/.config/konaste/games.json` file. Format of the game definition file is as
-`defaultGames` in the [src/games.ts](src/games.ts).
+`defaultGames` in the [src/games.ts](src/games.ts). Additional properties used
+by `%{key}` placeholders must have string values. Invalid JSON and values that
+do not match the game definition schema are reported with their field path.
 
 ### `konaste <game> config`
 
@@ -231,12 +233,18 @@ without launcher.
 
 - `konaste infinitas profile`: Lists the available profiles for the game.
 - `konaste infinitas profile --default`: Unsets the default profile. If no
-  profile is set as default, selection will be prompted when launching.
+  profile is set as default, selection will be prompted when launching. This is
+  stored as `"runProfile": null` in the game configuration.
 - `konaste infinitas profile <name> --command <command>`: Creates or updates a
   profile with the specified name and command.
 - `konaste infinitas profile <name> --delete`: Deletes the specified profile.
 - `konaste infinitas profile <name> --default`: Sets the specified profile as
-  the default profile.
+  the default profile. The profile must already exist or be created by the same
+  command.
+
+Configuration files are validated when read. A missing configuration is
+treated as uninitialized, while malformed JSON, invalid fields, and I/O errors
+are reported instead of being replaced with defaults.
 
 You can use the following placeholders in the command string:
 
