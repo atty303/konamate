@@ -2,6 +2,7 @@ import {
   GameConfig,
   GameConfigSchema,
   normalizeConfig,
+  resolveRunProfile,
   updateProfile,
 } from "../src/config.ts";
 import { defaultGames } from "../src/games.ts";
@@ -98,4 +99,40 @@ Deno.test("validates profile operations", () => {
     () => updateProfile(config, { name: "launcher", cwd: "/tmp" }),
     /requires --command/,
   );
+});
+
+Deno.test("resolves launch profiles deterministically", async () => {
+  assert(
+    await resolveRunProfile(config, "launcher") === "launcher",
+    "explicit profile was ignored",
+  );
+  assert(
+    await resolveRunProfile(config, undefined) === "launcher",
+    "default profile was ignored",
+  );
+
+  const selectable: GameConfig = {
+    ...config,
+    profiles: {
+      launcher: { command: "run %u" },
+      game: { command: "run %t" },
+    },
+    runProfile: null,
+  };
+  assert(
+    await resolveRunProfile(
+      selectable,
+      undefined,
+      () => Promise.resolve("game"),
+    ) === "game",
+    "interactive profile was ignored",
+  );
+
+  let rejected = false;
+  try {
+    await resolveRunProfile(selectable, undefined);
+  } catch (error) {
+    rejected = error instanceof Error && /--profile/.test(error.message);
+  }
+  assert(rejected, "ambiguous non-interactive selection was accepted");
 });

@@ -48,6 +48,36 @@ const StoredGameConfigSchema = z.object({
 
 export type GameConfig = z.infer<typeof GameConfigSchema>;
 
+export type ProfileSelector = (
+  names: string[],
+) => Promise<string | undefined>;
+
+export async function resolveRunProfile(
+  config: GameConfig,
+  requested: string | undefined,
+  select?: ProfileSelector,
+): Promise<string> {
+  if (requested !== undefined) {
+    if (!Object.hasOwn(config.profiles, requested)) {
+      throw new Error(`Profile '${requested}' does not exist`);
+    }
+    return requested;
+  }
+  if (config.runProfile) return config.runProfile;
+
+  const names = Object.keys(config.profiles);
+  if (names.length === 0) {
+    throw new Error("No profiles available for this game");
+  }
+  if (names.length === 1) return names[0];
+
+  const selected = await select?.(names);
+  if (selected !== undefined && names.includes(selected)) return selected;
+  throw new Error(
+    `No profile selected. Choose one with --profile: ${names.join(", ")}`,
+  );
+}
+
 export function configPath(game: string) {
   return path.join(configDir(), `${game}.json`);
 }

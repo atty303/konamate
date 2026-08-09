@@ -18,6 +18,7 @@ import { browserCommand } from "./browser.ts";
 import { controllerCommand } from "./controller.ts";
 import { secretCommand } from "./secret.ts";
 import { migrateCommand } from "./migrate.ts";
+import { settingsCommand } from "./settings.ts";
 
 const userGamesPath = path.join(configDir(), "games.json");
 let userGames: GameDefinition[] = [];
@@ -63,6 +64,7 @@ const cmd = new Command()
       );
     }
   })
+  .command("config", settingsCommand)
   .command("migrate", migrateCommand)
   .command("browser", browserCommand)
   .command("controller", controllerCommand)

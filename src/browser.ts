@@ -4,17 +4,24 @@ import $ from "@david/dax";
 import * as path from "@std/path";
 import { KEYRING_SERVICE, stateDir } from "./app.ts";
 import { readKeyringPassword, writeKeyringPassword } from "./secret.ts";
+import { resolveBrowserExecutable } from "./settings.ts";
 
 const browserStorage = path.join(
   stateDir(),
   "browser-storage.json",
 );
 
-async function launchBrowser(executablePath?: string) {
+type SetBrowserCloser = (close: () => Promise<void>) => void;
+
+async function launchBrowser(
+  executablePath: string,
+  setCloser?: SetBrowserCloser,
+) {
   const browser = await playwright.chromium.launch({
     headless: false,
     executablePath: executablePath,
   });
+  setCloser?.(() => browser.close());
   let context: Awaited<ReturnType<typeof browser.newContext>> | undefined;
   try {
     const storage = await $.path(browserStorage).exists()
@@ -39,19 +46,21 @@ async function launchBrowser(executablePath?: string) {
         },
       },
     );
+    const close = async () => {
+      try {
+        await initializedContext.close();
+      } finally {
+        await browser.close();
+      }
+    };
+    setCloser?.(close);
     return {
       browser,
       context: initializedContext,
       page,
       cdp,
       virtualAuthenticator,
-      close: async () => {
-        try {
-          await initializedContext.close();
-        } finally {
-          await browser.close();
-        }
-      },
+      close,
       loadCredentials: async (service: string, name: string) => {
         const text = readKeyringPassword(service, name);
         if (!text) {
@@ -79,9 +88,7 @@ async function launchBrowser(executablePath?: string) {
 function registerCommand() {
   return new Command()
     .description("Register a passkey at visiting account page")
-    .option("--browser <exe:file>", "The browser executable to use", {
-      required: true,
-    })
+    .option("--browser <exe:file>", "The browser executable to use")
     .option(
       "-s, --start-url <url:string>",
       "The URL to start the registration process",
@@ -98,7 +105,9 @@ function registerCommand() {
       default: "passkey-default",
     })
     .action(async (options) => {
-      const b = await launchBrowser(options.browser);
+      const b = await launchBrowser(
+        await resolveBrowserExecutable(options.browser),
+      );
       b.cdp.on("WebAuthn.credentialAdded", (payload) => {
         $.logStep(
           `Added credential: ${payload.credential.userDisplayName} (${payload.credential.credentialId})`,
@@ -126,9 +135,7 @@ function recordCommand() {
   return new Command()
     .description("Record a login flow for development purposes")
     .hidden()
-    .option("--browser <exe:file>", "The browser executable to use", {
-      required: true,
-    })
+    .option("--browser <exe:file>", "The browser executable to use")
     .option(
       "-u, --url <url:string>",
       "The URL to visit for login",
@@ -145,7 +152,9 @@ function recordCommand() {
       default: "passkey-default",
     })
     .action(async (options) => {
-      const b = await launchBrowser(options.browser);
+      const b = await launchBrowser(
+        await resolveBrowserExecutable(options.browser),
+      );
       b.loadCredentials(options.passkeyService, options.passkeyName);
 
       await b.page.goto(options.url);
@@ -159,12 +168,107 @@ function recordCommand() {
     });
 }
 
+export type LaunchUrlOptions = {
+  browser?: string;
+  url: string;
+  scheme: string;
+  passkeyService: string;
+  passkeyName: string;
+};
+
+export async function obtainLaunchUrl(
+  options: LaunchUrlOptions,
+): Promise<string> {
+  let closeResource: (() => Promise<void>) | undefined;
+  let closePromise: Promise<void> | undefined;
+  let interruptedExitCode: number | undefined;
+  const close = () => {
+    if (!closeResource) return undefined;
+    return closePromise ??= closeResource();
+  };
+  const setCloser = (closer: () => Promise<void>) => {
+    closeResource = closer;
+    if (interruptedExitCode !== undefined) {
+      close()?.catch((error) => $.logError("Failed to close browser:", error));
+    }
+  };
+  const stop = (exitCode: number) => {
+    if (interruptedExitCode !== undefined) return;
+    interruptedExitCode = exitCode;
+    close()?.catch((error) => $.logError("Failed to close browser:", error));
+  };
+  const stopOnSigint = () => stop(130);
+  const stopOnSigterm = () => stop(143);
+  Deno.addSignalListener("SIGINT", stopOnSigint);
+  Deno.addSignalListener("SIGTERM", stopOnSigterm);
+  try {
+    const b = await launchBrowser(
+      await resolveBrowserExecutable(options.browser),
+      setCloser,
+    );
+    if (interruptedExitCode !== undefined) {
+      throw new Error("Browser launch interrupted");
+    }
+    await b.loadCredentials(options.passkeyService, options.passkeyName);
+
+    await b.page.goto(options.url, { timeout: 30000 });
+    await b.page.waitForLoadState("networkidle");
+
+    let navigatedSchemeUrl: string | undefined;
+    b.page.on("requestfailed", (request) => {
+      $.logLight(
+        `Failed request observed: ${request.url()} - ${request.failure()?.errorText}`,
+      );
+      if (request.url().startsWith(`${options.scheme}://`)) {
+        navigatedSchemeUrl = request.url();
+        $.log("Navigated to game URL scheme: ", navigatedSchemeUrl);
+      }
+    });
+
+    try {
+      await b.page.getByRole("link", { name: "ゲーム起動" }).click({
+        timeout: 1000,
+      });
+    } catch (error) {
+      $.logWarn("Failed to click the game launch link:", error);
+    }
+
+    try {
+      await b.page.getByRole("link", { name: "起動処理を続ける" }).click({
+        timeout: 1000,
+      }).catch((error) => $.log("There is no continue link:", error));
+      await b.page.getByRole("button", { name: "ゲーム起動" }).click({
+        timeout: 1000,
+      });
+    } catch (error) {
+      $.logWarn("Failed to click the game launch link:", error);
+    }
+
+    await b.page.waitForLoadState("networkidle");
+
+    if (!navigatedSchemeUrl) {
+      throw new Error(`No request with scheme ${options.scheme} found.`);
+    }
+
+    $.logStep("Successfully navigated to the game URL:", navigatedSchemeUrl);
+    await $.path(browserStorage).parent()?.ensureDir();
+    await b.context.storageState({ path: browserStorage });
+    return navigatedSchemeUrl;
+  } finally {
+    Deno.removeSignalListener("SIGINT", stopOnSigint);
+    Deno.removeSignalListener("SIGTERM", stopOnSigterm);
+    try {
+      await close();
+    } finally {
+      if (interruptedExitCode !== undefined) Deno.exit(interruptedExitCode);
+    }
+  }
+}
+
 function launchCommand() {
   return new Command()
     .description("Perform a login and launch the game")
-    .option("--browser <exe:file>", "The browser executable to use", {
-      required: true,
-    })
+    .option("--browser <exe:file>", "The browser executable to use")
     .option(
       "-u, --url <url:string>",
       "The URL to visit after launching the browser",
@@ -184,84 +288,7 @@ function launchCommand() {
       default: "passkey-default",
     })
     .action(async (options) => {
-      const b = await launchBrowser(options.browser);
-      let closePromise: Promise<void> | undefined;
-      const close = () => closePromise ??= b.close();
-      let interrupted = false;
-      const stop = (exitCode: number) => {
-        if (interrupted) return;
-        interrupted = true;
-        close().catch((error) => $.logError("Failed to close browser:", error))
-          .finally(() => Deno.exit(exitCode));
-      };
-      const stopOnSigint = () => stop(130);
-      const stopOnSigterm = () => stop(143);
-      Deno.addSignalListener("SIGINT", stopOnSigint);
-      Deno.addSignalListener("SIGTERM", stopOnSigterm);
-      try {
-        await b.loadCredentials(options.passkeyService, options.passkeyName);
-
-        await b.page.goto(options.url, { timeout: 30000 });
-
-        await b.page.waitForLoadState("networkidle");
-
-        let navigatedSchemeUrl: string | undefined = undefined;
-        // Some games have a direct link to a game URL scheme then fails navigation
-        // (e.g., bm2dxinf://)
-        b.page.on("requestfailed", (request) => {
-          $.logLight(
-            `Failed request observed: ${request.url()} - ${request.failure()?.errorText}`,
-          );
-          if (request.url().startsWith(`${options.scheme}://`)) {
-            navigatedSchemeUrl = request.url();
-            $.log("Navigated to game URL scheme: ", navigatedSchemeUrl);
-          }
-        });
-
-        // Try to click button for INFINITAS
-        try {
-          await b.page.getByRole("link", { name: "ゲーム起動" }).click({
-            timeout: 1000,
-          });
-        } catch (error) {
-          $.logWarn("Failed to click the game launch link:", error);
-        }
-
-        // Try to click button for SDVX
-        try {
-          await b.page.getByRole("link", { name: "起動処理を続ける" }).click({
-            timeout: 1000,
-          }).catch((error) => $.log("There is no continue link:", error));
-          await b.page.getByRole("button", { name: "ゲーム起動" }).click({
-            timeout: 1000,
-          });
-        } catch (error) {
-          // Some games redirect to a game URL scheme by script then net::ERR_ABORTED error occurs
-          // (e.g., konaste.sdvx://)
-          $.logWarn("Failed to click the game launch link:", error);
-        }
-
-        await b.page.waitForLoadState("networkidle");
-
-        if (!navigatedSchemeUrl) {
-          throw new Error(
-            `No request with scheme ${options.scheme} found.`,
-          );
-        }
-
-        $.logStep(
-          "Successfully navigated to the game URL:",
-          navigatedSchemeUrl,
-        );
-        console.log(navigatedSchemeUrl);
-
-        await $.path(browserStorage).parent()?.ensureDir();
-        await b.context.storageState({ path: browserStorage });
-      } finally {
-        Deno.removeSignalListener("SIGINT", stopOnSigint);
-        Deno.removeSignalListener("SIGTERM", stopOnSigterm);
-        await close();
-      }
+      console.log(await obtainLaunchUrl(options));
     });
 }
 

@@ -1,12 +1,11 @@
 import { Command } from "@cliffy/command";
 import * as path from "@std/path";
-import { extractSdvxSchemeUrl, redactSensitive } from "./sensitive.ts";
+import { redactSensitive } from "./sensitive.ts";
 
 type Stage =
   | "preflight"
   | "confirmation"
   | "configuration"
-  | "authentication"
   | "game"
   | "manual-verification"
   | "cleanup";
@@ -115,6 +114,19 @@ async function run(
 function outputText(output: Deno.CommandOutput): string {
   const decoder = new TextDecoder();
   return `${decoder.decode(output.stdout)}${decoder.decode(output.stderr)}`;
+}
+
+function integratedLaunchFailureDetail(
+  output: string,
+  exitCode: number,
+): string {
+  const phase = output.includes("Launching sdvx with URL")
+    ? "game-process"
+    : output.includes("No request with scheme")
+    ? "launch-url"
+    : "authentication";
+  const summary = `${phase} failed; SDVX exited with code ${exitCode}`;
+  return output ? `${summary}\n${output}` : summary;
 }
 
 async function requireExecutable(executable: string): Promise<void> {
@@ -319,7 +331,7 @@ try {
 - launch SDVX using the existing Wine prefix: ${options.winePrefix}
 - allow Proton and the game to update prefix state, caches, and game settings
 
-It will not read ~/.config/konamate or reuse Playwright browser storage.`);
+It will not read ~/.config/konamate or reuse Patchright browser storage.`);
   if (!await confirm("Continue with the live test?")) {
     result.status = "cancelled";
     throw new StageError("confirmation", "Cancelled by user");
@@ -368,46 +380,39 @@ It will not read ~/.config/konamate or reuse Playwright browser storage.`);
         "Failed to select game profile",
     );
   }
+  const browserConfigured = await run(
+    options.binary,
+    ["config", "--browser", options.browser],
+    isolatedEnv,
+  );
+  if (!browserConfigured.success) {
+    throw new StageError(
+      "configuration",
+      redactSensitive(outputText(browserConfigured)).trim() ||
+        "Failed to configure the browser",
+    );
+  }
   result.stages.push({ stage: "configuration", status: "passed" });
 
-  currentStage = "authentication";
-  console.log("Authenticating with the existing Playwright launch flow...");
-  const authenticated = await run(options.binary, [
-    "browser",
-    "launch",
-    "--browser",
-    options.browser,
-    "--url",
-    "http://eagate.573.jp/game/konasteapp/API/login/login.html?game_id=sdvx",
-    "--scheme",
-    "konaste.sdvx",
+  currentStage = "game";
+  console.log("Authenticating and launching SDVX...");
+  const game = await run(options.binary, [
+    "sdvx",
+    "run",
     "--passkey-service",
     options.passkeyService,
     "--passkey-name",
     options.passkeyName,
+    "--profile",
+    "game",
   ], isolatedEnv);
-  const authenticationOutput = outputText(authenticated);
-  const schemeUrl = extractSdvxSchemeUrl(authenticationOutput);
-  if (!authenticated.success || !schemeUrl) {
-    throw new StageError(
-      "authentication",
-      redactSensitive(authenticationOutput).trim() ||
-        "No SDVX scheme URL was returned",
-    );
-  }
-  result.stages.push({ stage: "authentication", status: "passed" });
-
-  currentStage = "game";
-  console.log("Authentication succeeded. Launching SDVX...");
-  const game = await run(
-    options.binary,
-    ["sdvx", "run", "--no-notify", schemeUrl],
-    isolatedEnv,
-  );
   const gameOutput = redactSensitive(outputText(game)).trim();
   if (gameOutput) console.log(gameOutput);
   if (!game.success) {
-    throw new StageError("game", `SDVX exited with code ${game.code}`);
+    throw new StageError(
+      "game",
+      integratedLaunchFailureDetail(gameOutput, game.code),
+    );
   }
   result.stages.push({ stage: "game", status: "passed" });
 

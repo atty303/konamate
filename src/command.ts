@@ -5,6 +5,7 @@ import { Command } from "@cliffy/command";
 import {
   GameConfig,
   readConfig,
+  resolveRunProfile,
   tryReadConfig,
   updateProfile,
   writeConfig,
@@ -21,6 +22,8 @@ import {
   resolveProfileCwd,
   winPathToUnix,
 } from "./launch.ts";
+import { obtainLaunchUrl } from "./browser.ts";
+import { KEYRING_SERVICE } from "./app.ts";
 
 function configCommand(def: GameDefinition) {
   return new Command()
@@ -204,7 +207,7 @@ ${
             : ""
         }
 Comment=Play ${def.name} on Konaste
-Exec=${selfPath} ${def.id} run %u
+Exec=${selfPath} ${def.id} run --notify %u
 Type=Application
 Categories=Game;
 Terminal=false
@@ -242,58 +245,83 @@ function execCommand(def: GameDefinition) {
     });
 }
 
+async function selectProfileWithNotification(
+  def: GameDefinition,
+  names: string[],
+): Promise<string | undefined> {
+  const actions = names.map((name) => $.escapeArg(`--action=${name}=${name}`));
+  const selected =
+    await $`notify-send --app-name ${def.name} --urgency=critical --icon=${def.id} ${
+      $.rawArg(actions)
+    } ${"Select a profile to run"}`.noThrow().text();
+  $.logLight(`Selected profile: ${JSON.stringify(selected)}`);
+  return selected;
+}
+
+function selectProfileInTerminal(names: string[]): Promise<string | undefined> {
+  console.log("Available profiles:");
+  names.forEach((name, index) => console.log(`  ${index + 1}. ${name}`));
+  const answer = prompt("Select a profile by name or number:")?.trim();
+  if (!answer) return Promise.resolve(undefined);
+  const index = Number(answer);
+  return Promise.resolve(
+    Number.isInteger(index) && index >= 1 && index <= names.length
+      ? names[index - 1]
+      : answer,
+  );
+}
+
 function runCommand(def: GameDefinition) {
   return new Command()
     .description(
-      "Open the login page in a browser if url is not provided, otherwise run the game with the given URL",
+      "Authenticate in the configured browser and run the game, or run a supplied launch URL",
     )
-    .option("--no-notify", "Do not send a notification")
+    .option(
+      "--browser <exe:file>",
+      "Override the configured browser executable",
+    )
+    .option("--profile <name:string>", "Launch profile to use")
+    .option("--notify", "Use desktop notifications and profile selection")
+    .option(
+      "--passkey-service <service:string>",
+      "Service name for the passkey",
+      { default: KEYRING_SERVICE },
+    )
+    .option("--passkey-name <name:string>", "Name of the passkey", {
+      default: "passkey-default",
+    })
     .arguments("[url:string]")
     .action(async (options, url) => {
+      const config = await readConfig(def);
+      const selector = options.notify
+        ? (names: string[]) => selectProfileWithNotification(def, names)
+        : Deno.stdin.isTerminal() && Deno.stdout.isTerminal()
+        ? selectProfileInTerminal
+        : undefined;
+      const selectedProfileName = await resolveRunProfile(
+        config,
+        options.profile,
+        selector,
+      );
+
       if (!url) {
-        await $`xdg-open ${def.loginUrl}`;
-        return;
+        url = await obtainLaunchUrl({
+          browser: options.browser,
+          url: def.loginUrl,
+          scheme: def.urlScheme,
+          passkeyService: options.passkeyService,
+          passkeyName: options.passkeyName,
+        });
       }
 
       $.logStep(`Launching ${def.id} with URL: ${url}`);
 
-      const config = await readConfig(def);
-
-      // This command is expected to be run from a desktop entry, so notify the user
       if (options.notify) {
         await $`notify-send --app-name ${def.name} --urgency=low --icon=${def.id} --expire-time=5000 "Launching ${def.name}"`
           .noThrow();
       }
 
       const launchUrl = parseLaunchUrl(url, def.urlScheme);
-
-      const selectedProfileName = await (async () => {
-        if (config.runProfile) {
-          return config.runProfile;
-        } else if (Object.keys(config.profiles).length === 1) {
-          return Object.keys(config.profiles)[0];
-        } else {
-          const profileNames = Object.keys(config.profiles);
-          if (profileNames.length === 0) {
-            throw new Error("No profiles available for this game");
-          } else if (options.notify) {
-            const actions = profileNames.map((
-              name,
-            ) => ($.escapeArg(`--action=${name}=${name}`)));
-            const selected =
-              await $`notify-send --app-name ${def.name} --urgency=critical --icon=${def.id} ${
-                $.rawArg(actions)
-              } ${"Select a profile to run"}`.noThrow().text();
-            $.logLight(`Selected profile: ${JSON.stringify(selected)}`);
-            return profileNames.includes(selected) ? selected : undefined;
-          } else {
-            return undefined;
-          }
-        }
-      })();
-      if (!selectedProfileName) {
-        throw new Error("No profile selected");
-      }
 
       const profile = config.profiles[selectedProfileName];
       if (!profile) {

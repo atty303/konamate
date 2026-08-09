@@ -28,14 +28,15 @@ Currently, it supports the following games:
 Konaste games authenticate your subscription in the browser, then launch the
 game launcher via a custom URL scheme that includes an authorization token.
 Since the standalone executable won't run by itself, traditional launchers like
-Lutris cannot be used. This tool automates the registration of URL schemes in
-Linux desktop environments and provides a command wrapper for launching games
-with the necessary environment variables.
+Lutris cannot be used. Konamate uses Patchright to authenticate with a stored
+passkey, captures the launch URL, and starts the game with the necessary
+environment variables. Desktop URL association is available as an optional
+alternative.
 
 ## Prerequisites
 
-- Modern Linux distribution with a desktop environment
-  - Required: systemd-cat, desktop-file-install, xdg-open
+- Modern Linux distribution
+- A Chromium executable supported by Patchright and a system keyring
 - [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher) and it's
   dependencies
   - I recommend using Proton via umu‑launcher. Since Proton containerizes all
@@ -44,7 +45,8 @@ with the necessary environment variables.
 - Recommended using
   [atty303/proton-ge-custom](https://github.com/atty303/proton-ge-custom) to fix
   audio delay issues
-- If ImageMagick is installed, use it to generate icons for the games.
+- Optional desktop integration requires `desktop-file-install` and
+  `notify-send`. ImageMagick can provide game icons.
 
 I’m using [Bazzite](https://bazzite.gg/), and the minimal setup in this guide
 works out of the box without any extra system settings.
@@ -78,11 +80,24 @@ konamate migrate
 
 Existing files in the new locations take precedence, and legacy data is left
 unchanged. Keyring entries are copied from the legacy service when first used.
-Wine prefixes and desktop URL associations are not migrated. Run
-`konamate <game> associate` again for each configured game, then remove the old
-executable when it is no longer needed.
+Wine prefixes and desktop URL associations are not migrated. If you use the
+optional desktop integration, run `konamate <game> associate` again for each
+configured game, then remove the old executable when it is no longer needed.
 
 ## Minimal steps to launch the games
+
+Configure the Chromium executable used for authentication:
+
+```bash
+konamate config --browser /path/to/chromium
+```
+
+Register a passkey with the virtual authenticator. Complete the registration on
+the KONAMI account page opened by the command:
+
+```bash
+konamate browser register-passkey
+```
 
 You need to prepare the PulseAudio sink that configured sample rate to 44100Hz
 for the game audio output. For example, you can use the following command to
@@ -115,28 +130,21 @@ konamate infinitas exec umu-run wineboot --init
 konamate infinitas exec WINEDLLOVERRIDES="ieframe=d" umu-run msiexec /i ~/Downloads/infinitas_installer_2022060800.msi
 ```
 
-4. Run the following command to associate the URL scheme with the game:
-
-```bash
-konamate infinitas associate
-```
-
-5. Run the following command to open the login page in your browser:
+4. Authenticate and launch the game:
 
 ```bash
 konamate infinitas run
 ```
 
-6. After logging in, click the `ゲーム起動` button to launch the game launcher.
-7. After the launcher is started, click the `UPDATE` button to update the game.
-8. After the update is complete, click the `SETTING` button and set audio output
+5. After the launcher is started, click the `UPDATE` button to update the game.
+6. After the update is complete, click the `SETTING` button and set audio output
    to `WASAPI (共有モード)`(Shared Mode).
 
 > [!WARNING]
 > Wine does not support WASAPI Exclusive Mode on `winepulse.drv`(PulseAudio), so
 > you must use Shared Mode.
 
-9. After the audio output is set, click the `ゲーム起動` button to launch the
+7. After the audio output is set, click the `ゲーム起動` button to launch the
    game.
 
 </details>
@@ -163,13 +171,7 @@ konamate sdvx exec umu-run wineboot --init
 konamate sdvx exec WINEDLLOVERRIDES="ieframe=d" umu-run msiexec /i ~/Downloads/sdvx_installer_2022011800.msi
 ```
 
-4. Run the following command to associate the URL scheme with the game:
-
-```bash
-konamate sdvx associate
-```
-
-5. Run the following command to open the login page in your browser:
+4. Authenticate and launch the game:
 
 ```bash
 konamate sdvx run
@@ -200,25 +202,23 @@ konamate gitadora exec umu-run wineboot --init
 konamate gitadora exec WINEDLLOVERRIDES="ieframe=d" umu-run msiexec /i ~/Downloads/GITADORA_installer.msi
 ```
 
-4. Run the following command to associate the URL scheme with the game:
-
-```bash
-konamate gitadora associate
-```
-
-5. Run the following command to open the login page in your browser:
+4. Authenticate and launch the game:
 
 ```bash
 konamate gitadora run
 ```
-
-4. After logging in, click the `ゲーム起動` button to launch the game.
 
 </details>
 
 ## Usage
 
 You can explore the available commands by specifying the `--help` option.
+
+### `konamate config`
+
+This command stores application-wide settings. Configure the browser once with
+`konamate config --browser /path/to/chromium`; browser-related commands also
+accept `--browser` as a one-time override.
 
 ### `konamate ls`
 
@@ -278,7 +278,8 @@ You can use the following placeholders in the command string:
 ### `konamate <game> associate`
 
 This command registers the URL scheme for the specified game in the desktop
-environment. It allows you to launch the game from the browser.
+environment. It is optional and allows a regular browser to launch the game
+through a desktop entry.
 
 ### `konamate <game> exec <...command>`
 
@@ -291,11 +292,13 @@ variables.
 
 ### `konamate <game> run [url]`
 
-This command opens the login URL in your default web browser if no URL is
-provided.
+Without a URL, this command authenticates in the configured browser, captures
+the game launch URL, and executes the selected profile. Use `--profile NAME` to
+override the default; when a terminal is available, Konamate prompts if several
+profiles are available and none is selected.
 
-And this is executed by the URL scheme registered by the `associate` command. It
-will execute the command specified in the selected profile.
+With a URL, it launches the selected profile directly. Desktop entries created
+by `associate` use this form with `--notify`.
 
 ## Tweaks for better performance
 
@@ -484,12 +487,12 @@ execution path. You must specify the `--self-path` option when running the
 
 ### Live SDVX end-to-end test
 
-The live test exercises the existing Playwright login flow, obtains a real SDVX
-launch URL, and starts the installed game through umu/Proton. It is interactive,
-host-dependent, and intentionally separate from `mise run check` and CI.
+The live test exercises the integrated Patchright login and launch flow and
+starts the installed game through umu/Proton. It is interactive, host-dependent,
+and intentionally separate from `mise run check` and CI.
 
 Use an existing SDVX Wine prefix, but pass it explicitly so the test does not
-read or modify `~/.config/konamate`. Playwright browser storage and the generated
+read or modify `~/.config/konamate`. Patchright browser storage and the generated
 konamate configuration are isolated in a temporary directory. The existing
 passkey is read from the keyring.
 
