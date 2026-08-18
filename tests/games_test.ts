@@ -17,12 +17,22 @@ function assert(condition: unknown, message: string): asserts condition {
 Deno.test("validates game definitions and string metadata", () => {
   const parsed = GameDefinitionSchema.parse({ ...game, productCode: "ABC" });
   assert(parsed.productCode === "ABC", "string metadata was not retained");
+  assert(parsed.registry.length === 0, "default registry was not added");
 
   const invalidMetadata = GameDefinitionSchema.safeParse({
     ...game,
     productCode: 123,
   });
   assert(!invalidMetadata.success, "non-string metadata was accepted");
+});
+
+Deno.test("INFINITAS defaults include Wine registry declarations", async () => {
+  const { defaultGames } = await import("../src/games.ts");
+  const infinitas = defaultGames.find((game) => game.id === "infinitas");
+  assert(
+    infinitas?.registry.length === 4,
+    "INFINITAS registry defaults are missing",
+  );
 });
 
 Deno.test("rejects a missing run profile", () => {

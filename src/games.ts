@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { readJsonFile } from "./json.ts";
+import { RegistryDeclarationsSchema } from "./registry_declaration.ts";
 
 export const GameProfileSchema = z.object({
   command: z.string().min(1),
@@ -20,6 +21,7 @@ const GameDefinitionFields = {
   urlScheme: z.string().min(1),
   loginUrl: z.url(),
   registryKey: z.string().min(1),
+  registry: RegistryDeclarationsSchema.default([]),
   profiles: z.record(ProfileNameSchema, GameProfileSchema),
   runProfile: ProfileNameSchema,
 };
@@ -47,6 +49,36 @@ export const defaultGames = GameDefinitionsSchema.parse([
     urlScheme: "bm2dxinf",
     loginUrl: "https://p.eagate.573.jp/game/infinitas/2/api/login/login.html",
     registryKey: "Software\\KONAMI\\beatmania IIDX INFINITAS",
+    registry: [
+      {
+        action: "set",
+        key: "HKCU\\Software\\Wine\\Explorer",
+        name: "Desktop",
+        type: "string",
+        value: "Default",
+      },
+      {
+        action: "set",
+        key: "HKCU\\Software\\Wine\\Explorer\\Desktops",
+        name: "Default",
+        type: "string",
+        value: "1920x1080",
+      },
+      {
+        action: "set",
+        key: "HKCU\\Software\\Wine\\X11 Driver",
+        name: "Decorated",
+        type: "string",
+        value: "N",
+      },
+      {
+        action: "set",
+        key: "HKCU\\Software\\Wine\\X11 Driver",
+        name: "Managed",
+        type: "string",
+        value: "N",
+      },
+    ],
     profiles: {
       launcher: {
         command: "umu-run %r\\launcher\\modules\\bm2dx_launcher.exe %u",

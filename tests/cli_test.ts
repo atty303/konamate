@@ -237,10 +237,12 @@ Deno.test("registry subcommands store declarative settings", async () => {
     const stored = JSON.parse(
       await Deno.readTextFile(`${xdgConfigHome}/konamate/infinitas.json`),
     );
-    assert(
-      stored.registry[0].action === "delete",
-      "registry deletion was not stored",
+    const desktop = stored.registry.find((
+      entry: { key: string; name: string },
+    ) =>
+      entry.key === "HKCU\\Software\\Wine\\Explorer" && entry.name === "Desktop"
     );
+    assert(desktop?.action === "delete", "registry deletion was not stored");
   } finally {
     await Deno.remove(xdgConfigHome, { recursive: true });
   }

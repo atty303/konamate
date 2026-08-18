@@ -61,7 +61,7 @@ export function configCommand(resolveGame: GameResolver) {
           GAMEID: `umu-${def.id}`,
         },
         profiles: def.profiles,
-        registry: [],
+        registry: def.registry,
         runProfile: def.runProfile,
       };
       const config0: GameConfig = {
