@@ -262,6 +262,34 @@ configuration is not initialized, it will create with the default configuration.
   `NAME` to `value`. Use this to set umu-launcher, Proton or Wine environment
   variables.
 
+### `konamate registry`
+
+This command stores declarative Wine registry settings per game. `run` and
+`exec` apply saved settings directly to the game's Wine prefix before starting
+the requested command; Wine itself is not started for the update. Registry keys
+must use a complete hive path such as `HKCU\\Software\\Wine\\Explorer`.
+
+- `konamate registry list infinitas`: Shows saved registry declarations.
+- `konamate registry set infinitas HKCU\Software\Wine\Explorer Default --name Desktop`:
+  Saves a string value. Use `--type dword` for an unsigned 32-bit value.
+- `konamate registry delete infinitas HKCU\Software\Wine\Explorer --name Desktop`:
+  Declares the value absent. Applying the declaration deletes the value from the
+  prefix and keeps it absent on future runs.
+- `konamate registry apply infinitas`: Applies declarations immediately.
+
+Konamate refuses to apply declarations when it detects the Wine prefix is in
+use. Close the game and retry rather than risking a concurrent registry update.
+
+For example, the following settings match common Winecfg desktop/window-manager
+options without needing any Winecfg-specific command:
+
+```sh
+konamate registry set infinitas HKCU\Software\Wine\Explorer Default --name Desktop
+konamate registry set infinitas HKCU\Software\Wine\Explorer\Desktops 1920x1080 --name Default
+konamate registry set infinitas "HKCU\Software\Wine\X11 Driver" N --name Decorated
+konamate registry set infinitas "HKCU\Software\Wine\X11 Driver" N --name Managed
+```
+
 ### `konamate profile`
 
 This command manages the profiles for the specified game. Profiles are used to

@@ -197,3 +197,51 @@ Deno.test("profile subcommands update configuration explicitly", async () => {
     await Deno.remove(xdgConfigHome, { recursive: true });
   }
 });
+
+Deno.test("registry subcommands store declarative settings", async () => {
+  const xdgConfigHome = await Deno.makeTempDir();
+  try {
+    const initialize = await runCli(xdgConfigHome, [
+      "config",
+      "infinitas",
+      "--env.TEST=registry",
+    ]);
+    assert(initialize.success, outputText(initialize));
+    const set = await runCli(xdgConfigHome, [
+      "registry",
+      "set",
+      "infinitas",
+      "HKCU\\Software\\Wine\\Explorer",
+      "Default",
+      "--name",
+      "Desktop",
+    ]);
+    assert(set.success, outputText(set));
+
+    const list = await runCli(xdgConfigHome, ["registry", "list", "infinitas"]);
+    assert(list.success, outputText(list));
+    assert(
+      outputText(list).includes('"Desktop"'),
+      "registry setting is not listed",
+    );
+
+    const remove = await runCli(xdgConfigHome, [
+      "registry",
+      "delete",
+      "infinitas",
+      "HKCU\\Software\\Wine\\Explorer",
+      "--name",
+      "Desktop",
+    ]);
+    assert(remove.success, outputText(remove));
+    const stored = JSON.parse(
+      await Deno.readTextFile(`${xdgConfigHome}/konamate/infinitas.json`),
+    );
+    assert(
+      stored.registry[0].action === "delete",
+      "registry deletion was not stored",
+    );
+  } finally {
+    await Deno.remove(xdgConfigHome, { recursive: true });
+  }
+});

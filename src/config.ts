@@ -8,10 +8,58 @@ import {
 } from "./games.ts";
 import { readJsonFile } from "./json.ts";
 import { configDir } from "./app.ts";
+import { isRegistryKey } from "./registry_key.ts";
+
+const RegistryValueNameSchema = z.string().refine(
+  (name) => !/[\r\n\0]/.test(name),
+  "Registry value name cannot contain a newline or NUL",
+);
+const RegistryStringValueSchema = z.string().refine(
+  (value) => !value.includes("\0"),
+  "Registry string value cannot contain NUL",
+);
 
 const GameConfigFields = {
   env: z.record(z.string(), z.string()),
   profiles: z.record(ProfileNameSchema, GameProfileSchema),
+  registry: z.array(z.discriminatedUnion("action", [
+    z.object({
+      action: z.literal("set"),
+      key: z.string().refine(
+        isRegistryKey,
+        "Registry key must start with HKCU or HKLM",
+      ),
+      name: RegistryValueNameSchema,
+      type: z.enum(["string", "dword"]),
+      value: z.union([
+        RegistryStringValueSchema,
+        z.number().int().min(0).max(0xffff_ffff),
+      ]),
+    }).strict().superRefine((value, context) => {
+      if (value.type === "string" && typeof value.value !== "string") {
+        context.addIssue({
+          code: "custom",
+          path: ["value"],
+          message: "String registry values require a string",
+        });
+      }
+      if (value.type === "dword" && typeof value.value !== "number") {
+        context.addIssue({
+          code: "custom",
+          path: ["value"],
+          message: "DWORD registry values require an unsigned 32-bit integer",
+        });
+      }
+    }),
+    z.object({
+      action: z.literal("delete"),
+      key: z.string().refine(
+        isRegistryKey,
+        "Registry key must start with HKCU or HKLM",
+      ),
+      name: RegistryValueNameSchema,
+    }).strict(),
+  ])),
 };
 
 export const GameConfigSchema = z.object({
@@ -28,10 +76,23 @@ export const GameConfigSchema = z.object({
       message: `Profile '${config.runProfile}' does not exist`,
     });
   }
+  const seen = new Set<string>();
+  for (const [index, entry] of config.registry.entries()) {
+    const id = `${entry.key}\0${entry.name}`.toLocaleLowerCase();
+    if (seen.has(id)) {
+      context.addIssue({
+        code: "custom",
+        path: ["registry", index],
+        message: "Registry key and value name must be unique",
+      });
+    }
+    seen.add(id);
+  }
 });
 
 const StoredGameConfigSchema = z.object({
   ...GameConfigFields,
+  registry: GameConfigFields.registry.optional(),
   runProfile: ProfileNameSchema.nullable().optional(),
 }).strict().superRefine((config, context) => {
   if (
@@ -47,6 +108,7 @@ const StoredGameConfigSchema = z.object({
 });
 
 export type GameConfig = z.infer<typeof GameConfigSchema>;
+export type RegistryDeclaration = GameConfig["registry"][number];
 
 export type ProfileSelector = (
   names: string[],
@@ -123,9 +185,26 @@ export function normalizeConfig(
   const parsed = StoredGameConfigSchema.parse(stored);
   return GameConfigSchema.parse({
     ...parsed,
+    registry: parsed.registry ?? [],
     runProfile: parsed.runProfile === undefined
       ? game.runProfile
       : parsed.runProfile,
+  });
+}
+
+export function updateRegistry(
+  config: GameConfig,
+  declaration: RegistryDeclaration,
+): GameConfig {
+  const id = `${declaration.key}\0${declaration.name}`.toLocaleLowerCase();
+  return GameConfigSchema.parse({
+    ...config,
+    registry: [
+      ...config.registry.filter((entry) =>
+        `${entry.key}\0${entry.name}`.toLocaleLowerCase() !== id
+      ),
+      declaration,
+    ],
   });
 }
 

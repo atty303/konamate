@@ -8,12 +8,12 @@ import {
   resolveRunProfile,
   tryReadConfig,
   updateProfile,
+  updateRegistry,
   writeConfig,
 } from "./config.ts";
 import $ from "@david/dax";
-import * as reg from "./winereg.ts";
-import { readRegistryFile } from "./winereg.ts";
 import { GameDefinition } from "./games.ts";
+import { RegistryService } from "./registry.ts";
 import { startProxy } from "./obs.ts";
 import {
   expandLaunchCommand,
@@ -61,6 +61,7 @@ export function configCommand(resolveGame: GameResolver) {
           GAMEID: `umu-${def.id}`,
         },
         profiles: def.profiles,
+        registry: [],
         runProfile: def.runProfile,
       };
       const config0: GameConfig = {
@@ -85,6 +86,85 @@ export function configCommand(resolveGame: GameResolver) {
       await writeConfig(def.id, config);
       $.logStep(`Configuration for ${def.id} saved`);
     });
+}
+
+function registryService(config: GameConfig): RegistryService {
+  const prefix = config.env.WINEPREFIX;
+  if (!prefix) {
+    throw new Error("WINEPREFIX is not set in the game configuration");
+  }
+  return new RegistryService(prefix);
+}
+
+async function applyRegistry(config: GameConfig): Promise<void> {
+  if (config.registry.length === 0) return;
+  await registryService(config).apply(config.registry);
+}
+
+export function registryCommand(resolveGame: GameResolver) {
+  const list = new Command()
+    .description("List declared registry settings")
+    .arguments("<game:game>")
+    .action(async (_, game) => {
+      const config = await readConfig(resolveGameArgument(resolveGame, game));
+      $.log(JSON.stringify(config.registry, null, 2));
+    });
+
+  const set = new Command()
+    .description("Declare a registry value")
+    .option("--name <name:string>", "Registry value name", { default: "" })
+    .option("--type <type:string>", "Registry value type", {
+      default: "string",
+    })
+    .arguments("<game:game> <key:string> <value:string>")
+    .action(async (options, game, key, value) => {
+      const def = resolveGameArgument(resolveGame, game);
+      const type = options.type;
+      if (type !== "string" && type !== "dword") {
+        throw new Error("Registry type must be string or dword");
+      }
+      const parsedValue = type === "dword" ? Number(value) : value;
+      const config = updateRegistry(await readConfig(def), {
+        action: "set",
+        key,
+        name: options.name,
+        type,
+        value: parsedValue,
+      });
+      await writeConfig(def.id, config);
+      $.logStep(`Registry setting for ${def.id} saved`);
+    });
+
+  const remove = new Command()
+    .description("Declare a registry value absent")
+    .option("--name <name:string>", "Registry value name", { default: "" })
+    .arguments("<game:game> <key:string>")
+    .action(async (options, game, key) => {
+      const def = resolveGameArgument(resolveGame, game);
+      const config = updateRegistry(await readConfig(def), {
+        action: "delete",
+        key,
+        name: options.name,
+      });
+      await writeConfig(def.id, config);
+      $.logStep(`Registry deletion for ${def.id} saved`);
+    });
+
+  const apply = new Command()
+    .description("Apply declared registry settings to the Wine prefix")
+    .arguments("<game:game>")
+    .action(async (_, game) => {
+      const config = await readConfig(resolveGameArgument(resolveGame, game));
+      await applyRegistry(config);
+      $.logStep("Registry settings applied");
+    });
+
+  return new Command()
+    .description("Manage declared Wine registry settings")
+    .command("list", list)
+    .command("set", set)
+    .command("delete", remove)
+    .command("apply", apply);
 }
 
 function profileDescription(): string {
@@ -181,16 +261,11 @@ async function extractIcon(
   config: GameConfig,
   dest: string,
 ): Promise<void> {
-  const systemReg = await readRegistryFile(
-    path.join(config.env.WINEPREFIX, "system.reg"),
+  const iconValue = await registryService(config).readLocalMachine(
+    `Software\\Classes\\${def.urlScheme}\\DefaultIcon`,
+    "",
   );
-
-  const [pathInWin, index] = await (() => {
-    const iconValue = reg.findValue(
-      systemReg,
-      `Software\\Classes\\${def.urlScheme}\\DefaultIcon`,
-      "",
-    );
+  const [pathInWin, index] = (() => {
     if (iconValue && iconValue.type === "REG_SZ") {
       const [path, index] = iconValue.data.split(",");
       return [path, parseInt(index, 10)] as const;
@@ -294,6 +369,7 @@ export function execCommand(resolveGame: GameResolver) {
     .action(async (_, game, ...command) => {
       const def = resolveGameArgument(resolveGame, game);
       const config = await readConfig(def);
+      await applyRegistry(config);
       await $.raw`${command.join(" ")}`.env(config.env).printCommand();
     });
 }
@@ -347,6 +423,7 @@ export function runCommand(resolveGame: GameResolver) {
     .action(async (options, game, url) => {
       const def = resolveGameArgument(resolveGame, game);
       const config = await readConfig(def);
+      await applyRegistry(config);
       const selector = options.notify
         ? (names: string[]) => selectProfileWithNotification(def, names)
         : Deno.stdin.isTerminal() && Deno.stdout.isTerminal()
@@ -387,11 +464,7 @@ export function runCommand(resolveGame: GameResolver) {
       const installDir = await (async () => {
         if (!needsInstallDir(profile.command, profile.cwd)) return undefined;
 
-        const systemReg = await readRegistryFile(
-          path.join(config.env.WINEPREFIX, "system.reg"),
-        );
-        const value = reg.findValue(
-          systemReg,
+        const value = await registryService(config).readLocalMachine(
           def.registryKey,
           "InstallDir",
         );

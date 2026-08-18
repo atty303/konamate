@@ -15,6 +15,7 @@ import {
   execCommand,
   obsWebSocketProxyCommand,
   profileCommand,
+  registryCommand,
   runCommand,
 } from "./command.ts";
 import { APP_NAME, configDir } from "./app.ts";
@@ -33,6 +34,7 @@ async function main(): Promise<void> {
     "run",
     "config",
     "profile",
+    "registry",
     "associate",
     "exec",
     "obs-websocket-proxy",
@@ -99,6 +101,7 @@ async function main(): Promise<void> {
     .command("secret", secretCommand)
     .command("config", configCommand(resolveGame))
     .command("profile", profileCommand(resolveGame))
+    .command("registry", registryCommand(resolveGame))
     .command("associate", associateCommand(resolveGame))
     .command("exec", execCommand(resolveGame))
     .command("run", runCommand(resolveGame))

@@ -4,6 +4,7 @@ import {
   normalizeConfig,
   resolveRunProfile,
   updateProfile,
+  updateRegistry,
 } from "../src/config.ts";
 import { defaultGames } from "../src/games.ts";
 
@@ -11,6 +12,7 @@ const game = defaultGames[0];
 const config: GameConfig = {
   env: { WINEPREFIX: "/tmp/prefix" },
   profiles: { launcher: { command: "run %u" } },
+  registry: [],
   runProfile: "launcher",
 };
 
@@ -38,6 +40,92 @@ Deno.test("normalizes legacy config and preserves an explicit null", () => {
 
   const withoutDefault = normalizeConfig({ ...config, runProfile: null }, game);
   assert(withoutDefault.runProfile === null, "explicit null was not preserved");
+  assert(legacy.registry.length === 0, "legacy registry was not normalized");
+});
+
+Deno.test("registry declarations reject invalid keys and replace case-insensitively", () => {
+  const withValue = updateRegistry(config, {
+    action: "set",
+    key: "HKCU\\Software\\Wine\\Explorer",
+    name: "Desktop",
+    type: "string",
+    value: "Default",
+  });
+  const replaced = updateRegistry(withValue, {
+    action: "delete",
+    key: "hkcu\\software\\wine\\explorer",
+    name: "desktop",
+  });
+  assert(replaced.registry.length === 1, "registry value was not replaced");
+  assert(
+    replaced.registry[0].action === "delete",
+    "delete declaration was lost",
+  );
+  assert(
+    !GameConfigSchema.safeParse({
+      ...config,
+      registry: [{
+        action: "set",
+        key: "Software\\Wine\\Explorer",
+        name: "Desktop",
+        type: "string",
+        value: "Default",
+      }],
+    }).success,
+    "relative registry key was accepted",
+  );
+  assert(
+    !GameConfigSchema.safeParse({
+      ...config,
+      registry: [{
+        action: "set",
+        key: "HKCU\\Software\\Wine\\Explorer\nBroken",
+        name: "Desktop",
+        type: "string",
+        value: "Default",
+      }],
+    }).success,
+    "registry key with newline was accepted",
+  );
+  assert(
+    !GameConfigSchema.safeParse({
+      ...config,
+      registry: [{
+        action: "set",
+        key: "HKCU\\Software\\Wine\\Explorer",
+        name: "Flags",
+        type: "dword",
+        value: 0x1_0000_0000,
+      }],
+    }).success,
+    "out-of-range DWORD was accepted",
+  );
+  assert(
+    !GameConfigSchema.safeParse({
+      ...config,
+      registry: [{
+        action: "set",
+        key: "HKCU\\Software\\Wine\\Explorer",
+        name: "Desktop\nBroken",
+        type: "string",
+        value: "Default",
+      }],
+    }).success,
+    "registry value name with newline was accepted",
+  );
+  assert(
+    !GameConfigSchema.safeParse({
+      ...config,
+      registry: [{
+        action: "set",
+        key: "HKCU\\Software\\Wine\\Explorer",
+        name: "Desktop",
+        type: "string",
+        value: "Default\0Broken",
+      }],
+    }).success,
+    "registry string value with NUL was accepted",
+  );
 });
 
 Deno.test("rejects invalid config fields and profile references", () => {
