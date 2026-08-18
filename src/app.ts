@@ -7,6 +7,7 @@ export const LEGACY_BROWSER_NAME = "konaste-buddy";
 
 export const KEYRING_SERVICE = "io.github.atty303.konamate";
 export const LEGACY_KEYRING_SERVICE = "io.github.atty303.konaste-buddy";
+export const DEFAULT_PASSKEY_NAME = "passkey-default";
 
 export function configDir(): string {
   return path.join(xdg.config(), APP_NAME);

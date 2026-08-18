@@ -222,8 +222,9 @@ You can explore the available commands by specifying the `--help` option.
 ### `konamate settings`
 
 This command displays or stores application-wide settings. With no options it
-only displays the saved settings. Use `--detect` to find a compatible browser
-and save its path, or `--browser /path/to/chromium` to save a path explicitly.
+only displays the saved settings; in a new environment, it displays an empty
+object. Use `--detect` to find a compatible browser and save its path, or
+`--browser /path/to/chromium` to save a path explicitly.
 Browser-related commands also accept `--browser` as a one-time override.
 
 When no browser is configured, browser-related commands search `PATH`, the user

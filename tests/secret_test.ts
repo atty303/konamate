@@ -1,4 +1,8 @@
-import { KEYRING_SERVICE, LEGACY_KEYRING_SERVICE } from "../src/app.ts";
+import {
+  DEFAULT_PASSKEY_NAME,
+  KEYRING_SERVICE,
+  LEGACY_KEYRING_SERVICE,
+} from "../src/app.ts";
 import { PasswordStore, readPasswordWithMigration } from "../src/password.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -13,6 +17,13 @@ function memoryStore(entries: Record<string, string>): PasswordStore {
     },
   };
 }
+
+Deno.test("uses the standard passkey name by default", () => {
+  assert(
+    DEFAULT_PASSKEY_NAME === "passkey-default",
+    "unexpected default passkey name",
+  );
+});
 
 Deno.test("keyring migration copies a missing current entry", () => {
   const entries: Record<string, string> = {

@@ -134,18 +134,27 @@ export const settingsCommand = new Command()
     conflicts: ["browser"],
   })
   .action(async (options) => {
-    const settings = await (async () => {
-      if (options.browser !== undefined) {
-        return AppSettingsSchema.parse({ browser: options.browser });
-      }
-      if (!options.detect) return await readSettings();
-      const browser = await detectBrowserExecutable();
-      if (!browser) throw browserNotFoundError();
-      return { browser };
-    })();
+    const shouldWrite = options.browser !== undefined || options.detect;
+    const settings =
+      await (async (): Promise<AppSettings | Record<never, never>> => {
+        if (options.browser !== undefined) {
+          return AppSettingsSchema.parse({ browser: options.browser });
+        }
+        if (!options.detect) {
+          try {
+            return await readSettings();
+          } catch (error) {
+            if (error instanceof Deno.errors.NotFound) return {};
+            throw error;
+          }
+        }
+        const browser = await detectBrowserExecutable();
+        if (!browser) throw browserNotFoundError();
+        return { browser };
+      })();
     $.log(JSON.stringify(settings, null, 2));
-    if (options.browser !== undefined || options.detect) {
-      await writeSettings(settings);
+    if (shouldWrite) {
+      await writeSettings(AppSettingsSchema.parse(settings));
       $.logStep("Application configuration saved");
     }
   });

@@ -2,7 +2,7 @@ import { Command } from "@cliffy/command";
 import playwright from "patchright";
 import $ from "@david/dax";
 import * as path from "@std/path";
-import { KEYRING_SERVICE, stateDir } from "./app.ts";
+import { DEFAULT_PASSKEY_NAME, KEYRING_SERVICE, stateDir } from "./app.ts";
 import { readKeyringPassword, writeKeyringPassword } from "./secret.ts";
 import { resolveBrowserExecutable } from "./settings.ts";
 
@@ -102,7 +102,7 @@ function registerCommand() {
       },
     )
     .option("--passkey-name <name:string>", "Name of the passkey", {
-      default: "passkey-default",
+      default: DEFAULT_PASSKEY_NAME,
     })
     .action(async (options) => {
       const b = await launchBrowser(
@@ -149,7 +149,7 @@ function recordCommand() {
       },
     )
     .option("--passkey-name <name:string>", "Name of the passkey", {
-      default: "passkey-default",
+      default: DEFAULT_PASSKEY_NAME,
     })
     .action(async (options) => {
       const b = await launchBrowser(
@@ -286,7 +286,7 @@ function launchCommand() {
       },
     )
     .option("--passkey-name <name:string>", "Name of the passkey", {
-      default: "passkey-default",
+      default: DEFAULT_PASSKEY_NAME,
     })
     .action(async (options) => {
       console.log(await obtainLaunchUrl(options));

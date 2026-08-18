@@ -1,6 +1,6 @@
 import { Command } from "@cliffy/command";
 import { Entry } from "@napi-rs/keyring";
-import { KEYRING_SERVICE } from "./app.ts";
+import { DEFAULT_PASSKEY_NAME, KEYRING_SERVICE } from "./app.ts";
 import { PasswordStore, readPasswordWithMigration } from "./password.ts";
 
 const keyringStore: PasswordStore = {
@@ -38,7 +38,7 @@ function importCommand() {
       default: KEYRING_SERVICE,
     })
     .option("-n, --name <name:string>", "Name of the secret", {
-      required: true,
+      default: DEFAULT_PASSKEY_NAME,
     })
     .action(async (options) => {
       if (Deno.stdin) {
@@ -58,7 +58,7 @@ function exportCommand() {
       default: KEYRING_SERVICE,
     })
     .option("-n, --name <name:string>", "Name of the secret", {
-      required: true,
+      default: DEFAULT_PASSKEY_NAME,
     })
     .action((options) => {
       const text = readKeyringPassword(options.service, options.name);

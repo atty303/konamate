@@ -23,7 +23,7 @@ import {
   winPathToUnix,
 } from "./launch.ts";
 import { obtainLaunchUrl } from "./browser.ts";
-import { KEYRING_SERVICE } from "./app.ts";
+import { DEFAULT_PASSKEY_NAME, KEYRING_SERVICE } from "./app.ts";
 
 export type GameResolver = (id: string) => GameDefinition;
 
@@ -341,7 +341,7 @@ export function runCommand(resolveGame: GameResolver) {
       { default: KEYRING_SERVICE },
     )
     .option("--passkey-name <name:string>", "Name of the passkey", {
-      default: "passkey-default",
+      default: DEFAULT_PASSKEY_NAME,
     })
     .arguments("<game:game> [url:string]")
     .action(async (options, game, url) => {

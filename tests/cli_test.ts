@@ -37,6 +37,31 @@ Deno.test("static commands do not load game definitions", async () => {
   }
 });
 
+Deno.test("settings reports no saved values in a new environment", async () => {
+  const xdgConfigHome = await Deno.makeTempDir();
+  try {
+    const settings = await runCli(xdgConfigHome, ["settings"]);
+    assert(settings.success, outputText(settings));
+    assert(
+      outputText(settings).includes("{}"),
+      "missing settings were not reported as an empty object",
+    );
+    let created = false;
+    try {
+      await Deno.stat(`${xdgConfigHome}/konamate/config.json`);
+      created = true;
+    } catch (error) {
+      if (!(error instanceof Deno.errors.NotFound)) throw error;
+    }
+    assert(
+      !created,
+      "settings command created configuration without an option",
+    );
+  } finally {
+    await Deno.remove(xdgConfigHome, { recursive: true });
+  }
+});
+
 Deno.test("custom games are validated and completed as arguments", async () => {
   const xdgConfigHome = await Deno.makeTempDir();
   try {
