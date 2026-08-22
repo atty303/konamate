@@ -149,69 +149,8 @@ function updateText(
   return lines.join(newline);
 }
 
-async function prefixIsActive(prefix: string): Promise<boolean> {
-  const resolvePrefix = async (value: string, cwd = Deno.cwd()) => {
-    const candidate = path.isAbsolute(value) ? value : path.resolve(cwd, value);
-    return await Deno.realPath(candidate).catch(() => candidate);
-  };
-  const target = await resolvePrefix(prefix);
-  for await (const entry of Deno.readDir("/proc")) {
-    if (entry.name === String(Deno.pid)) continue;
-    if (!/^\d+$/.test(entry.name)) continue;
-    let environment: string;
-    try {
-      environment = await Deno.readTextFile(`/proc/${entry.name}/environ`);
-    } catch (error) {
-      if (error instanceof Deno.errors.NotFound) continue;
-      throw new Error(
-        `Cannot determine whether Wine prefix is in use: ${prefix}`,
-        { cause: error },
-      );
-    }
-    const declaredPrefix = environment.split("\0").find((value) =>
-      value.startsWith("WINEPREFIX=")
-    )?.slice("WINEPREFIX=".length);
-    if (!declaredPrefix) continue;
-    let executable: string;
-    try {
-      executable = await Deno.realPath(`/proc/${entry.name}/exe`);
-    } catch (error) {
-      if (error instanceof Deno.errors.NotFound) continue;
-      throw new Error(
-        `Cannot determine whether Wine prefix is in use: ${prefix}`,
-        { cause: error },
-      );
-    }
-    if (
-      !/^(?:wine(?:64)?(?:-preloader)?|wineserver)$/i.test(
-        path.basename(executable),
-      )
-    ) {
-      continue;
-    }
-    let cwd: string;
-    try {
-      cwd = await Deno.realPath(`/proc/${entry.name}/cwd`);
-    } catch (error) {
-      if (error instanceof Deno.errors.NotFound) continue;
-      throw new Error(
-        `Cannot determine whether Wine prefix is in use: ${prefix}`,
-        { cause: error },
-      );
-    }
-    const candidate = await resolvePrefix(declaredPrefix, cwd);
-    if (candidate === target) return true;
-  }
-  return false;
-}
-
-type PrefixActivityCheck = (prefix: string) => Promise<boolean>;
-
 export class RegistryService {
-  constructor(
-    readonly prefix: string,
-    private readonly isActive: PrefixActivityCheck = prefixIsActive,
-  ) {
+  constructor(readonly prefix: string) {
     if (!path.isAbsolute(prefix)) {
       throw new Error(
         "WINEPREFIX must be an absolute path for registry operations",
@@ -236,11 +175,6 @@ export class RegistryService {
 
   async apply(declarations: RegistryDeclaration[]): Promise<void> {
     if (declarations.length === 0) return;
-    if (await this.isActive(this.prefix)) {
-      throw new Error(
-        `Wine prefix is in use: ${this.prefix}. Close the game before applying registry settings.`,
-      );
-    }
 
     const byFile = new Map<string, RegistryDeclaration[]>();
     for (const declaration of declarations) {

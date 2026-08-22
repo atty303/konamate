@@ -16,7 +16,7 @@ Deno.test("RegistryService updates only declared values in the matching hive", a
       "WINE REGISTRY Version 2\n",
     );
 
-    const service = new RegistryService(prefix, () => Promise.resolve(false));
+    const service = new RegistryService(prefix);
     await service.apply([
       {
         action: "set",
@@ -118,36 +118,6 @@ Deno.test("RegistryService updates only declared values in the matching hive", a
       !(await Deno.readTextFile(userReg)).includes('"a=b"='),
       "quoted value name was not deleted",
     );
-  } finally {
-    await Deno.remove(prefix, { recursive: true });
-  }
-});
-
-Deno.test("RegistryService preserves the prefix when activity cannot be checked", async () => {
-  const prefix = await Deno.makeTempDir();
-  const userReg = `${prefix}/user.reg`;
-  try {
-    const original = "WINE REGISTRY Version 2\n";
-    await Deno.writeTextFile(userReg, original);
-    await Deno.writeTextFile(`${prefix}/system.reg`, original);
-    const service = new RegistryService(
-      prefix,
-      () => Promise.reject(new Error("inspection denied")),
-    );
-    let rejected = false;
-    try {
-      await service.apply([{
-        action: "set",
-        key: "HKCU\\Software\\Wine\\Explorer",
-        name: "Desktop",
-        type: "string",
-        value: "Default",
-      }]);
-    } catch {
-      rejected = true;
-    }
-    assert(rejected, "unknown prefix activity was accepted");
-    assert(await Deno.readTextFile(userReg) === original, "prefix was changed");
   } finally {
     await Deno.remove(prefix, { recursive: true });
   }

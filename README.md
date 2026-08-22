@@ -277,8 +277,9 @@ must use a complete hive path such as `HKCU\\Software\\Wine\\Explorer`.
   prefix and keeps it absent on future runs.
 - `konamate registry apply infinitas`: Applies declarations immediately.
 
-Konamate refuses to apply declarations when it detects the Wine prefix is in
-use. Close the game and retry rather than risking a concurrent registry update.
+Konamate does not coordinate registry updates with other Wine processes using
+the same prefix. Do not start another instance with the prefix while one is
+already running.
 
 For example, the following settings match common Winecfg desktop/window-manager
 options without needing any Winecfg-specific command:
