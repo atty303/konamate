@@ -281,6 +281,10 @@ Konamate does not coordinate registry updates with other Wine processes using
 the same prefix. Do not start another instance with the prefix while one is
 already running.
 
+If a registry file does not exist, Konamate prints a warning and skips the
+declarations for that file. This allows commands such as `wineboot --init` to
+initialize a new Wine prefix before registry declarations are applied.
+
 For example, the following settings match common Winecfg desktop/window-manager
 options without needing any Winecfg-specific command:
 

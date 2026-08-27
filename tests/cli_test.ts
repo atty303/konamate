@@ -247,3 +247,26 @@ Deno.test("registry subcommands store declarative settings", async () => {
     await Deno.remove(xdgConfigHome, { recursive: true });
   }
 });
+
+Deno.test("exec warns and continues when a registry file is absent", async () => {
+  const xdgConfigHome = await Deno.makeTempDir();
+  try {
+    const prefix = `${xdgConfigHome}/uninitialized-prefix`;
+    const initialize = await runCli(xdgConfigHome, [
+      "config",
+      "infinitas",
+      `--env.WINEPREFIX=${prefix}`,
+    ]);
+    assert(initialize.success, outputText(initialize));
+
+    const exec = await runCli(xdgConfigHome, ["exec", "infinitas", "true"]);
+    const output = outputText(exec);
+    assert(exec.success, output);
+    assert(
+      output.includes(`Registry file not found; skipping: ${prefix}/user.reg`),
+      "missing registry file warning was not shown",
+    );
+  } finally {
+    await Deno.remove(xdgConfigHome, { recursive: true });
+  }
+});

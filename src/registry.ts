@@ -1,4 +1,5 @@
 import * as path from "@std/path";
+import $ from "@david/dax";
 import { type RegistryDeclaration } from "./config.ts";
 import {
   parseRegistryKey,
@@ -184,7 +185,16 @@ export class RegistryService {
     }
 
     for (const [file, entries] of byFile) {
-      const original = await Deno.readTextFile(file);
+      const original = await (async () => {
+        try {
+          return await Deno.readTextFile(file);
+        } catch (error) {
+          if (!(error instanceof Deno.errors.NotFound)) throw error;
+          $.logWarn(`Registry file not found; skipping: ${file}`);
+          return undefined;
+        }
+      })();
+      if (original === undefined) continue;
       let content = original;
       for (const entry of entries) {
         content = updateText(content, parseRegistryKey(entry.key), entry);
