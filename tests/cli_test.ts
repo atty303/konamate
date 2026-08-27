@@ -263,7 +263,7 @@ Deno.test("exec warns and continues when a registry file is absent", async () =>
     const output = outputText(exec);
     assert(exec.success, output);
     assert(
-      output.includes(`Registry file not found; skipping: ${prefix}/user.reg`),
+      output.includes(`file not found; skipping: ${prefix}/user.reg`),
       "missing registry file warning was not shown",
     );
   } finally {
