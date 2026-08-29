@@ -5,6 +5,7 @@ import * as path from "@std/path";
 import { DEFAULT_PASSKEY_NAME, KEYRING_SERVICE, stateDir } from "./app.ts";
 import { readKeyringPassword, writeKeyringPassword } from "./secret.ts";
 import { resolveBrowserExecutable } from "./settings.ts";
+import { captureLaunchUrl } from "./browser_launch.ts";
 
 const browserStorage = path.join(
   stateDir(),
@@ -214,41 +215,16 @@ export async function obtainLaunchUrl(
     await b.page.goto(options.url, { timeout: 30000 });
     await b.page.waitForLoadState("networkidle");
 
-    let navigatedSchemeUrl: string | undefined;
-    b.page.on("requestfailed", (request) => {
-      $.logLight(
-        `Failed request observed: ${request.url()} - ${request.failure()?.errorText}`,
-      );
-      if (request.url().startsWith(`${options.scheme}://`)) {
-        navigatedSchemeUrl = request.url();
-        $.log("Navigated to game URL scheme: ", navigatedSchemeUrl);
-      }
+    const navigatedSchemeUrl = await captureLaunchUrl(b.page, options.scheme, {
+      onClickFailed: (error) =>
+        $.logWarn("Failed to click the game launch link:", error),
+      onContinueMissing: (error) => $.log("There is no continue link:", error),
+      onRequestFailed: (request) =>
+        $.logLight(
+          `Failed request observed: ${request.url()} - ${request.failure()?.errorText}`,
+        ),
+      onSchemeCaptured: (url) => $.log("Navigated to game URL scheme: ", url),
     });
-
-    try {
-      await b.page.getByRole("link", { name: "ゲーム起動" }).click({
-        timeout: 1000,
-      });
-    } catch (error) {
-      $.logWarn("Failed to click the game launch link:", error);
-    }
-
-    try {
-      await b.page.getByRole("link", { name: "起動処理を続ける" }).click({
-        timeout: 1000,
-      }).catch((error) => $.log("There is no continue link:", error));
-      await b.page.getByRole("button", { name: "ゲーム起動" }).click({
-        timeout: 1000,
-      });
-    } catch (error) {
-      $.logWarn("Failed to click the game launch link:", error);
-    }
-
-    await b.page.waitForLoadState("networkidle");
-
-    if (!navigatedSchemeUrl) {
-      throw new Error(`No request with scheme ${options.scheme} found.`);
-    }
 
     $.logStep("Successfully navigated to the game URL:", navigatedSchemeUrl);
     await $.path(browserStorage).parent()?.ensureDir();
