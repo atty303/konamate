@@ -1,71 +1,21 @@
 import * as path from "@std/path";
-import $ from "@david/dax";
-import { z } from "zod";
 import {
-  GameDefinition,
-  GameProfileSchema,
+  assertNoLegacyFiles,
+  readConfigFile,
+  updateConfigFile,
+  withGameConfig,
+} from "./config_file.ts";
+import type { GameDefinition } from "./games.ts";
+import {
+  type GameConfig,
+  GameConfigSchema,
+  type GameProfile,
   ProfileNameSchema,
-} from "./games.ts";
-import { readJsonFile } from "./json.ts";
-import { configDir } from "./app.ts";
-import {
   type RegistryDeclaration,
-  RegistryDeclarationsSchema,
-} from "./registry_declaration.ts";
+} from "./models.ts";
 
-const GameConfigFields = {
-  env: z.record(z.string(), z.string()),
-  profiles: z.record(ProfileNameSchema, GameProfileSchema),
-  registry: RegistryDeclarationsSchema,
-};
-
-export const GameConfigSchema = z.object({
-  ...GameConfigFields,
-  runProfile: ProfileNameSchema.nullable(),
-}).strict().superRefine((config, context) => {
-  if (
-    typeof config.runProfile === "string" &&
-    !Object.hasOwn(config.profiles, config.runProfile)
-  ) {
-    context.addIssue({
-      code: "custom",
-      path: ["runProfile"],
-      message: `Profile '${config.runProfile}' does not exist`,
-    });
-  }
-  const seen = new Set<string>();
-  for (const [index, entry] of config.registry.entries()) {
-    const id = `${entry.key}\0${entry.name}`.toLocaleLowerCase();
-    if (seen.has(id)) {
-      context.addIssue({
-        code: "custom",
-        path: ["registry", index],
-        message: "Registry key and value name must be unique",
-      });
-    }
-    seen.add(id);
-  }
-});
-
-const StoredGameConfigSchema = z.object({
-  ...GameConfigFields,
-  registry: GameConfigFields.registry.optional(),
-  runProfile: ProfileNameSchema.nullable().optional(),
-}).strict().superRefine((config, context) => {
-  if (
-    typeof config.runProfile === "string" &&
-    !Object.hasOwn(config.profiles, config.runProfile)
-  ) {
-    context.addIssue({
-      code: "custom",
-      path: ["runProfile"],
-      message: `Profile '${config.runProfile}' does not exist`,
-    });
-  }
-});
-
-export type GameConfig = z.infer<typeof GameConfigSchema>;
-export type { RegistryDeclaration } from "./registry_declaration.ts";
+export { GameConfigSchema };
+export type { GameConfig, RegistryDeclaration };
 
 export type ProfileSelector = (
   names: string[],
@@ -83,13 +33,11 @@ export async function resolveRunProfile(
     return requested;
   }
   if (config.runProfile) return config.runProfile;
-
   const names = Object.keys(config.profiles);
   if (names.length === 0) {
     throw new Error("No profiles available for this game");
   }
   if (names.length === 1) return names[0];
-
   const selected = await select?.(names);
   if (selected !== undefined && names.includes(selected)) return selected;
   throw new Error(
@@ -97,127 +45,250 @@ export async function resolveRunProfile(
   );
 }
 
-export function configPath(game: string) {
-  return path.join(configDir(), `${game}.json`);
+export function createDefaultConfig(game: GameDefinition): GameConfig {
+  return GameConfigSchema.parse({
+    common: {
+      env: {
+        WINEPREFIX: path.join(
+          Deno.env.get("HOME") ?? "",
+          "Games",
+          "konamate",
+          game.id,
+        ),
+        GAMEID: `umu-${game.id}`,
+        ...game.common.env,
+      },
+      registry: game.common.registry,
+    },
+    profiles: game.profiles,
+    runProfile: game.runProfile,
+  });
 }
 
 export async function tryReadConfig(
   game: GameDefinition,
 ): Promise<GameConfig | undefined> {
-  try {
-    return await readStoredConfig(game);
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return undefined;
-    throw error;
-  }
+  await assertNoLegacyFiles(game.id);
+  const profiles = (await readConfigFile()).profiles;
+  return Object.hasOwn(profiles, game.id) ? profiles[game.id] : undefined;
 }
 
 export async function readConfig(game: GameDefinition): Promise<GameConfig> {
-  const filePath = configPath(game.id);
-  try {
-    return await readStoredConfig(game);
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) {
-      throw new Error(
-        `Configuration not found at ${filePath}. Please run 'konamate config ${game.id}' first.`,
-        { cause: error },
-      );
-    }
-    throw error;
-  }
+  return await tryReadConfig(game) ?? createDefaultConfig(game);
 }
 
-async function readStoredConfig(game: GameDefinition): Promise<GameConfig> {
-  const stored = await readJsonFile(
-    configPath(game.id),
-    StoredGameConfigSchema,
-  );
-  return normalizeConfig(stored, game);
-}
-
-export function normalizeConfig(
-  stored: unknown,
+export async function updateConfig(
   game: GameDefinition,
-): GameConfig {
-  const parsed = StoredGameConfigSchema.parse(stored);
-  return GameConfigSchema.parse({
-    ...parsed,
-    registry: parsed.registry ?? [],
-    runProfile: parsed.runProfile === undefined
-      ? game.runProfile
-      : parsed.runProfile,
+  update: (config: GameConfig) => GameConfig,
+): Promise<GameConfig> {
+  await assertNoLegacyFiles(game.id);
+  let updated: GameConfig | undefined;
+  await updateConfigFile((root) => {
+    const current = Object.hasOwn(root.profiles, game.id)
+      ? root.profiles[game.id]
+      : createDefaultConfig(game);
+    updated = GameConfigSchema.parse(
+      update(current),
+    );
+    return withGameConfig(root, game.id, updated);
   });
+  return updated!;
 }
 
-export function updateRegistry(
+const registryId = (entry: Pick<RegistryDeclaration, "key" | "name">) =>
+  `${entry.key}\0${entry.name}`.toLocaleLowerCase();
+
+function storedProfile(
   config: GameConfig,
-  declaration: RegistryDeclaration,
-): GameConfig {
-  const id = `${declaration.key}\0${declaration.name}`.toLocaleLowerCase();
-  return GameConfigSchema.parse({
-    ...config,
-    registry: [
-      ...config.registry.filter((entry) =>
-        `${entry.key}\0${entry.name}`.toLocaleLowerCase() !== id
-      ),
-      declaration,
-    ],
-  });
+  name: string,
+): GameProfile | undefined {
+  return Object.hasOwn(config.profiles, name)
+    ? config.profiles[name]
+    : undefined;
 }
 
-export async function writeConfig(
-  gameId: string,
+export function mergeRegistryDeclarations(
+  common: RegistryDeclaration[],
+  profile: RegistryDeclaration[],
+): RegistryDeclaration[] {
+  const overridden = new Set(profile.map(registryId));
+  return [
+    ...common.filter((entry) => !overridden.has(registryId(entry))),
+    ...profile,
+  ];
+}
+
+export type EffectiveProfile = Omit<GameProfile, "env" | "registry"> & {
+  env: Record<string, string>;
+  registry: RegistryDeclaration[];
+};
+
+export function resolveEffectiveProfile(
   config: GameConfig,
-): Promise<void> {
-  const path = $.path(configPath(gameId));
-  await path.parent()?.ensureDir();
-  await path.writeJsonPretty(GameConfigSchema.parse(config));
+  name: string,
+): EffectiveProfile {
+  const profile = storedProfile(config, name);
+  if (!profile) throw new Error(`Profile '${name}' does not exist`);
+  const env = { ...config.common.env };
+  for (const [key, value] of Object.entries(profile.env)) {
+    if (value === "") delete env[key];
+    else env[key] = value;
+  }
+  return {
+    command: profile.command,
+    ...(profile.cwd === undefined ? {} : { cwd: profile.cwd }),
+    env,
+    registry: mergeRegistryDeclarations(
+      config.common.registry,
+      profile.registry,
+    ),
+  };
+}
+
+export function resolveProcessEnvironment(
+  config: GameConfig,
+  name: string,
+): Record<string, string | undefined> {
+  const environment: Record<string, string | undefined> = {
+    ...resolveEffectiveProfile(config, name).env,
+  };
+  for (
+    const [key, value] of Object.entries(storedProfile(config, name)?.env ?? {})
+  ) {
+    if (value === "") environment[key] = undefined;
+  }
+  return environment;
+}
+
+export function resolveTarget(
+  config: GameConfig,
+  name: string,
+  effective = false,
+): GameProfile | GameConfig["common"] | EffectiveProfile {
+  if (name === "common") return config.common;
+  const profile = storedProfile(config, name);
+  if (!profile) throw new Error(`Profile '${name}' does not exist`);
+  return effective ? resolveEffectiveProfile(config, name) : profile;
 }
 
 export type ProfileUpdate = {
-  name?: string;
+  name: string;
   command?: string;
   cwd?: string;
+  unsetCwd?: boolean;
   delete?: boolean;
-  setDefault?: boolean;
 };
 
 export function updateProfile(
   config: GameConfig,
   update: ProfileUpdate,
 ): GameConfig {
+  if (update.name === "common") {
+    throw new Error("'common' is not a launch profile");
+  }
+  ProfileNameSchema.parse(update.name);
   const profiles = { ...config.profiles };
-  const name = update.name === undefined
-    ? undefined
-    : ProfileNameSchema.parse(update.name);
-
-  if (update.delete && update.command) {
-    throw new Error("--delete and --command cannot be used together");
-  }
-  if ((update.delete || update.command || update.cwd) && !name) {
-    throw new Error("A profile name is required");
-  }
-  if (update.cwd && !update.command) {
-    throw new Error("--cwd requires --command");
-  }
-
-  if (update.delete && name) {
-    if (!Object.hasOwn(profiles, name)) {
-      throw new Error(`Profile '${name}' does not exist`);
+  const current = Object.hasOwn(profiles, update.name)
+    ? profiles[update.name]
+    : undefined;
+  if (update.delete) {
+    if (!current) throw new Error(`Profile '${update.name}' does not exist`);
+    delete profiles[update.name];
+  } else {
+    const hasUpdate = update.command !== undefined ||
+      update.cwd !== undefined ||
+      update.unsetCwd;
+    if (!hasUpdate) {
+      throw new Error("Provide --command, --cwd, or --unset-cwd");
     }
-    delete profiles[name];
-  } else if (update.command && name) {
-    profiles[name] = { command: update.command, cwd: update.cwd };
+    if (!current && !update.command) {
+      throw new Error("--command is required when creating a profile");
+    }
+    const cwd = update.unsetCwd ? undefined : update.cwd ?? current?.cwd;
+    profiles[update.name] = {
+      command: update.command ?? current!.command,
+      ...(cwd === undefined ? {} : { cwd }),
+      env: current?.env ?? {},
+      registry: current?.registry ?? [],
+    };
   }
-
   let runProfile = config.runProfile;
-  if (update.delete && name === runProfile) runProfile = null;
-  if (update.setDefault) {
-    if (name && !Object.hasOwn(profiles, name)) {
-      throw new Error(`Profile '${name}' does not exist`);
-    }
-    runProfile = name ?? null;
-  }
-
+  if (update.delete && update.name === runProfile) runProfile = null;
   return GameConfigSchema.parse({ ...config, profiles, runProfile });
+}
+
+export function setDefaultProfile(
+  config: GameConfig,
+  name: string | null,
+): GameConfig {
+  if (name === "common") {
+    throw new Error("'common' cannot be the default profile");
+  }
+  if (name !== null && !Object.hasOwn(config.profiles, name)) {
+    throw new Error(`Profile '${name}' does not exist`);
+  }
+  return GameConfigSchema.parse({ ...config, runProfile: name });
+}
+
+export function updateEnvironment(
+  config: GameConfig,
+  target: string,
+  name: string,
+  action: "set" | "unset" | "inherit",
+  value?: string,
+): GameConfig {
+  if (target === "common") {
+    if (action === "inherit") {
+      throw new Error("common environment cannot inherit");
+    }
+    const env = { ...config.common.env };
+    if (action === "unset" || value === "") delete env[name];
+    else env[name] = value!;
+    return GameConfigSchema.parse({
+      ...config,
+      common: { ...config.common, env },
+    });
+  }
+  const profile = storedProfile(config, target);
+  if (!profile) throw new Error(`Profile '${target}' does not exist`);
+  const env = { ...profile.env };
+  if (action === "inherit") delete env[name];
+  else env[name] = action === "unset" ? "" : value!;
+  return GameConfigSchema.parse({
+    ...config,
+    profiles: { ...config.profiles, [target]: { ...profile, env } },
+  });
+}
+
+export function updateRegistry(
+  config: GameConfig,
+  target: string,
+  declaration: RegistryDeclaration | undefined,
+  remove?: Pick<RegistryDeclaration, "key" | "name">,
+): GameConfig {
+  if (target === "common" && remove) {
+    throw new Error("common registry declarations cannot inherit");
+  }
+  const current = target === "common"
+    ? config.common.registry
+    : storedProfile(config, target)?.registry;
+  if (!current) throw new Error(`Profile '${target}' does not exist`);
+  const id = registryId(declaration ?? remove!);
+  const registry = [
+    ...current.filter((entry) => registryId(entry) !== id),
+    ...(declaration ? [declaration] : []),
+  ];
+  if (target === "common") {
+    return GameConfigSchema.parse({
+      ...config,
+      common: { ...config.common, registry },
+    });
+  }
+  return GameConfigSchema.parse({
+    ...config,
+    profiles: {
+      ...config.profiles,
+      [target]: { ...storedProfile(config, target)!, registry },
+    },
+  });
 }

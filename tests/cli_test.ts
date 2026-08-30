@@ -1,3 +1,7 @@
+import { readConfigFile, writeConfigFile } from "../src/config_file.ts";
+import { emptyKonamateConfig } from "../src/models.ts";
+import { desktopExecLine } from "../src/desktop_entry.ts";
+
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -7,136 +11,190 @@ function outputText(output: Deno.CommandOutput): string {
   return decoder.decode(output.stdout) + decoder.decode(output.stderr);
 }
 
+async function createExecutable(filePath: string): Promise<void> {
+  await Deno.mkdir(filePath.substring(0, filePath.lastIndexOf("/")), {
+    recursive: true,
+  });
+  await Deno.writeTextFile(filePath, "#!/bin/sh\nexit 1\n");
+  await Deno.chmod(filePath, 0o755);
+}
+
 function runCli(
   xdgConfigHome: string,
   args: string[],
+  home = xdgConfigHome,
+  environment: Record<string, string> = {},
 ): Promise<Deno.CommandOutput> {
   return new Deno.Command(Deno.execPath(), {
     args: ["run", "-A", "src/main.ts", ...args],
-    env: { XDG_CONFIG_HOME: xdgConfigHome },
+    env: { XDG_CONFIG_HOME: xdgConfigHome, HOME: home, ...environment },
     stdout: "piped",
     stderr: "piped",
   }).output();
 }
 
-Deno.test("static commands do not load game definitions", async () => {
-  const xdgConfigHome = await Deno.makeTempDir();
+Deno.test("static help does not load unified configuration", async () => {
+  const root = await Deno.makeTempDir();
   try {
-    const configDir = `${xdgConfigHome}/konamate`;
-    await Deno.mkdir(configDir);
-    await Deno.writeTextFile(`${configDir}/games.json`, "not json");
-
-    const rootHelp = await runCli(xdgConfigHome, ["--help"]);
-    assert(rootHelp.success, outputText(rootHelp));
-    assert(outputText(rootHelp).includes("run"), "run command is missing");
-
-    const games = await runCli(xdgConfigHome, ["games"]);
-    assert(!games.success, "invalid game definitions were ignored");
+    const directory = `${root}/konamate`;
+    await Deno.mkdir(directory);
+    await Deno.writeTextFile(`${directory}/config.toml`, "invalid = [");
+    const help = await runCli(root, ["--help"]);
+    assert(help.success, outputText(help));
+    const games = await runCli(root, ["games"]);
+    assert(!games.success, "invalid unified config was ignored");
   } finally {
-    await Deno.remove(xdgConfigHome, { recursive: true });
+    await Deno.remove(root, { recursive: true });
   }
 });
 
-Deno.test("settings reports no saved values in a new environment", async () => {
-  const xdgConfigHome = await Deno.makeTempDir();
+Deno.test("desktop entries preserve profile arguments and literal percent", () => {
+  assert(
+    desktopExecLine(
+      "/path with space/konamate",
+      "custom game",
+      "my profile %u",
+    ) ===
+      '"/path with space/konamate" run "custom game" --profile "my profile %%u" --notify %u',
+    "desktop Exec arguments were not encoded",
+  );
+});
+
+Deno.test("settings reads and writes only the settings section", async () => {
+  const root = await Deno.makeTempDir();
   try {
-    const settings = await runCli(xdgConfigHome, ["settings"]);
+    const settings = await runCli(root, ["settings"]);
     assert(settings.success, outputText(settings));
-    assert(
-      outputText(settings).includes("{}"),
-      "missing settings were not reported as an empty object",
-    );
-    let created = false;
+    assert(outputText(settings).includes("{}"), "empty settings not shown");
+    let missing = false;
     try {
-      await Deno.stat(`${xdgConfigHome}/konamate/config.json`);
-      created = true;
+      await Deno.stat(`${root}/konamate/config.toml`);
     } catch (error) {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
+      missing = error instanceof Deno.errors.NotFound;
     }
+    assert(missing, "read-only settings created config.toml");
+
+    const saved = await runCli(root, [
+      "settings",
+      "--browser",
+      "/usr/bin/chromium",
+    ]);
+    assert(saved.success, outputText(saved));
+    const config = await readConfigFile(`${root}/konamate/config.toml`);
     assert(
-      !created,
-      "settings command created configuration without an option",
+      config.settings.browser === "/usr/bin/chromium",
+      "browser not saved",
     );
   } finally {
-    await Deno.remove(xdgConfigHome, { recursive: true });
+    await Deno.remove(root, { recursive: true });
   }
 });
 
-Deno.test("custom games are validated and completed as arguments", async () => {
-  const xdgConfigHome = await Deno.makeTempDir();
+Deno.test("normal commands reject mixed JSON and TOML configuration", async () => {
+  const root = await Deno.makeTempDir();
   try {
-    const configDir = `${xdgConfigHome}/konamate`;
-    await Deno.mkdir(configDir);
-    await Deno.writeTextFile(
-      `${configDir}/games.json`,
-      JSON.stringify([{
-        id: "custom",
-        name: "Custom Game",
-        urlScheme: "custom.game",
-        loginUrl: "https://example.com/login",
-        registryKey: "Software\\Custom Game",
-        profiles: { launcher: { command: "run %u" } },
-        runProfile: "launcher",
-      }]),
-    );
-
-    const games = await runCli(xdgConfigHome, ["games", "--json"]);
-    assert(games.success, outputText(games));
+    const directory = `${root}/konamate`;
+    await writeConfigFile(emptyKonamateConfig(), `${directory}/config.toml`);
+    await Deno.writeTextFile(`${directory}/sdvx.json`, "{}");
+    const settings = await runCli(root, [
+      "settings",
+      "--browser",
+      "/usr/bin/chromium",
+    ]);
+    assert(!settings.success, "mixed configuration was accepted");
     assert(
-      outputText(games).includes('"id": "custom"'),
-      "custom game is missing",
+      outputText(settings).includes("konamate migrate"),
+      outputText(settings),
     );
+    assert(
+      (await readConfigFile(`${directory}/config.toml`)).settings.browser ===
+        undefined,
+      "mixed configuration modified config.toml",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
 
-    const completions = await runCli(xdgConfigHome, [
+Deno.test("browser auto-detection rejects legacy JSON before writing TOML", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const directory = `${root}/konamate`;
+    const bin = `${root}/bin`;
+    await Deno.mkdir(directory, { recursive: true });
+    await Deno.writeTextFile(`${directory}/config.json`, "{}");
+    await createExecutable(`${bin}/chromium`);
+    const auth = await runCli(
+      root,
+      ["auth", "register-passkey"],
+      root,
+      { PATH: bin },
+    );
+    assert(!auth.success, "legacy JSON was ignored during browser detection");
+    assert(outputText(auth).includes("konamate migrate"), outputText(auth));
+    await assertMissing(`${directory}/config.toml`);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("custom games are loaded from config.toml", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const file = `${root}/konamate/config.toml`;
+    const config = emptyKonamateConfig();
+    config.games.custom = {
+      id: "custom",
+      name: "Custom Game",
+      urlScheme: "custom.game",
+      loginUrl: "https://example.com/login",
+      registryKey: "Software\\Custom Game",
+      common: { env: {}, registry: [] },
+      profiles: {
+        launcher: { command: "run %u", env: {}, registry: [] },
+      },
+      runProfile: "launcher",
+    };
+    await writeConfigFile(config, file);
+    const games = await runCli(root, ["games", "--json"]);
+    assert(games.success, outputText(games));
+    assert(outputText(games).includes('"id": "custom"'), "custom game missing");
+    const completion = await runCli(root, [
       "completions",
       "complete",
       "game",
       "run",
     ]);
-    assert(completions.success, outputText(completions));
+    assert(completion.success, outputText(completion));
     assert(
-      outputText(completions).split("\n").includes("custom"),
-      "custom game completion is missing",
+      outputText(completion).split("\n").includes("custom"),
+      "custom completion missing",
     );
-
-    for (const oldCommand of ["sdvx", "ls", "browser"]) {
-      const output = await runCli(xdgConfigHome, [oldCommand, "--help"]);
-      assert(
-        !output.success,
-        `legacy command '${oldCommand}' is still available`,
-      );
-    }
-
-    const authHelp = await runCli(xdgConfigHome, ["auth", "--help"]);
-    assert(authHelp.success, outputText(authHelp));
-    assert(
-      !outputText(authHelp).includes("launch"),
-      "hidden auth command is visible",
-    );
-    const hiddenLaunch = await runCli(xdgConfigHome, [
-      "auth",
-      "launch",
-      "--help",
-    ]);
-    assert(hiddenLaunch.success, outputText(hiddenLaunch));
-    const upgrade = await runCli(xdgConfigHome, ["upgrade", "--help"]);
-    assert(upgrade.success, outputText(upgrade));
   } finally {
-    await Deno.remove(xdgConfigHome, { recursive: true });
+    await Deno.remove(root, { recursive: true });
   }
 });
 
-Deno.test("profile subcommands update configuration explicitly", async () => {
-  const xdgConfigHome = await Deno.makeTempDir();
+Deno.test("profile commands manage common and inherited settings", async () => {
+  const root = await Deno.makeTempDir();
   try {
-    const configure = await runCli(xdgConfigHome, [
-      "config",
-      "sdvx",
-      "--env.TEST=value",
+    const settings = await runCli(root, [
+      "settings",
+      "--browser",
+      "/usr/bin/chromium",
     ]);
-    assert(configure.success, outputText(configure));
-
-    const set = await runCli(xdgConfigHome, [
+    assert(settings.success, outputText(settings));
+    const commonEnv = await runCli(root, [
+      "profile",
+      "env",
+      "set",
+      "sdvx",
+      "common",
+      "TEST",
+      "common",
+    ]);
+    assert(commonEnv.success, outputText(commonEnv));
+    const set = await runCli(root, [
       "profile",
       "set",
       "sdvx",
@@ -147,126 +205,195 @@ Deno.test("profile subcommands update configuration explicitly", async () => {
       "/tmp/game",
     ]);
     assert(set.success, outputText(set));
-    const setDefault = await runCli(xdgConfigHome, [
+    const emptySet = await runCli(root, [
       "profile",
-      "default",
+      "set",
+      "sdvx",
+      "missing",
+    ]);
+    assert(!emptySet.success, "empty profile update succeeded");
+    const unset = await runCli(root, [
+      "profile",
+      "env",
+      "unset",
       "sdvx",
       "custom",
-    ]);
-    assert(setDefault.success, outputText(setDefault));
-
-    const list = await runCli(xdgConfigHome, ["profile", "list", "sdvx"]);
-    assert(list.success, outputText(list));
-    assert(
-      outputText(list).includes("custom (default)"),
-      "default is not listed",
-    );
-
-    const ambiguous = await runCli(xdgConfigHome, [
-      "profile",
-      "default",
-      "sdvx",
-      "custom",
-      "--unset",
-    ]);
-    assert(!ambiguous.success, "ambiguous default operation was accepted");
-    const unset = await runCli(xdgConfigHome, [
-      "profile",
-      "default",
-      "sdvx",
-      "--unset",
+      "TEST",
     ]);
     assert(unset.success, outputText(unset));
-    const deleteProfile = await runCli(xdgConfigHome, [
+    const hidden = await runCli(root, [
       "profile",
-      "delete",
+      "show",
       "sdvx",
       "custom",
+      "--effective",
     ]);
-    assert(deleteProfile.success, outputText(deleteProfile));
-
-    const stored = JSON.parse(
-      await Deno.readTextFile(`${xdgConfigHome}/konamate/sdvx.json`),
-    );
-    assert(stored.runProfile === null, "default profile was not unset");
+    assert(hidden.success, outputText(hidden));
     assert(
-      !Object.hasOwn(stored.profiles, "custom"),
-      "profile was not deleted",
+      !outputText(hidden).includes('"TEST"'),
+      "tombstone did not unset env",
     );
-  } finally {
-    await Deno.remove(xdgConfigHome, { recursive: true });
-  }
-});
-
-Deno.test("registry subcommands store declarative settings", async () => {
-  const xdgConfigHome = await Deno.makeTempDir();
-  try {
-    const initialize = await runCli(xdgConfigHome, [
-      "config",
-      "infinitas",
-      "--env.TEST=registry",
+    const inherit = await runCli(root, [
+      "profile",
+      "env",
+      "inherit",
+      "sdvx",
+      "custom",
+      "TEST",
     ]);
-    assert(initialize.success, outputText(initialize));
-    const set = await runCli(xdgConfigHome, [
+    assert(inherit.success, outputText(inherit));
+    const inherited = await runCli(root, [
+      "profile",
+      "show",
+      "sdvx",
+      "custom",
+      "--effective",
+    ]);
+    assert(
+      outputText(inherited).includes('"TEST": "common"'),
+      "env not inherited",
+    );
+
+    const registrySet = await runCli(root, [
+      "profile",
       "registry",
       "set",
-      "infinitas",
+      "sdvx",
+      "common",
       "HKCU\\Software\\Wine\\Explorer",
       "Default",
       "--name",
       "Desktop",
     ]);
-    assert(set.success, outputText(set));
-
-    const list = await runCli(xdgConfigHome, ["registry", "list", "infinitas"]);
-    assert(list.success, outputText(list));
-    assert(
-      outputText(list).includes('"Desktop"'),
-      "registry setting is not listed",
-    );
-
-    const remove = await runCli(xdgConfigHome, [
+    assert(registrySet.success, outputText(registrySet));
+    const registryDelete = await runCli(root, [
+      "profile",
       "registry",
       "delete",
-      "infinitas",
+      "sdvx",
+      "custom",
       "HKCU\\Software\\Wine\\Explorer",
       "--name",
       "Desktop",
     ]);
-    assert(remove.success, outputText(remove));
-    const stored = JSON.parse(
-      await Deno.readTextFile(`${xdgConfigHome}/konamate/infinitas.json`),
+    assert(registryDelete.success, outputText(registryDelete));
+    const effectiveRegistry = await runCli(root, [
+      "profile",
+      "registry",
+      "list",
+      "sdvx",
+      "custom",
+      "--effective",
+    ]);
+    assert(
+      outputText(effectiveRegistry).includes('"action": "delete"'),
+      "profile registry did not override common",
     );
-    const desktop = stored.registry.find((
-      entry: { key: string; name: string },
-    ) =>
-      entry.key === "HKCU\\Software\\Wine\\Explorer" && entry.name === "Desktop"
+    const registryRemove = await runCli(root, [
+      "profile",
+      "registry",
+      "remove",
+      "sdvx",
+      "custom",
+      "HKCU\\Software\\Wine\\Explorer",
+      "--name",
+      "Desktop",
+    ]);
+    assert(registryRemove.success, outputText(registryRemove));
+    const restoredRegistry = await runCli(root, [
+      "profile",
+      "registry",
+      "list",
+      "sdvx",
+      "custom",
+      "--effective",
+    ]);
+    assert(
+      outputText(restoredRegistry).includes('"action": "set"'),
+      "common registry was not restored",
     );
-    assert(desktop?.action === "delete", "registry deletion was not stored");
+    assert(
+      (await readConfigFile(`${root}/konamate/config.toml`)).settings
+        .browser ===
+        "/usr/bin/chromium",
+      "profile update discarded settings",
+    );
+
+    for (const removed of ["config", "registry"]) {
+      const output = await runCli(root, [removed, "--help"]);
+      assert(!output.success, `removed command '${removed}' still exists`);
+    }
   } finally {
-    await Deno.remove(xdgConfigHome, { recursive: true });
+    await Deno.remove(root, { recursive: true });
   }
 });
 
-Deno.test("exec warns and continues when a registry file is absent", async () => {
-  const xdgConfigHome = await Deno.makeTempDir();
+Deno.test("profile reads use defaults without initializing config.toml", async () => {
+  const root = await Deno.makeTempDir();
   try {
-    const prefix = `${xdgConfigHome}/uninitialized-prefix`;
-    const initialize = await runCli(xdgConfigHome, [
-      "config",
-      "infinitas",
-      `--env.WINEPREFIX=${prefix}`,
-    ]);
-    assert(initialize.success, outputText(initialize));
+    const listed = await runCli(root, ["profile", "list", "sdvx"]);
+    assert(listed.success, outputText(listed));
+    assert(outputText(listed).includes("launcher"), "default profile missing");
+    await assertMissing(`${root}/konamate/config.toml`);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
 
-    const exec = await runCli(xdgConfigHome, ["exec", "infinitas", "true"]);
+Deno.test("exec uses the selected effective profile", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const prefix = `${root}/prefix`;
+    for (
+      const [name, value] of [
+        ["WINEPREFIX", prefix],
+        ["VISIBLE", "yes"],
+      ]
+    ) {
+      const set = await runCli(root, [
+        "profile",
+        "env",
+        "set",
+        "infinitas",
+        "common",
+        name,
+        value,
+      ]);
+      assert(set.success, outputText(set));
+    }
+    const unset = await runCli(root, [
+      "profile",
+      "env",
+      "unset",
+      "infinitas",
+      "game",
+      "VISIBLE",
+    ]);
+    assert(unset.success, outputText(unset));
+    const exec = await runCli(
+      root,
+      ["exec", "--profile", "game", "infinitas", "env"],
+      root,
+      { VISIBLE: "from-parent" },
+    );
     const output = outputText(exec);
     assert(exec.success, output);
+    assert(!output.includes("VISIBLE=yes"), "tombstoned env reached process");
     assert(
       output.includes(`file not found; skipping: ${prefix}/user.reg`),
-      "missing registry file warning was not shown",
+      "effective registry was not applied",
     );
   } finally {
-    await Deno.remove(xdgConfigHome, { recursive: true });
+    await Deno.remove(root, { recursive: true });
   }
 });
+
+async function assertMissing(file: string): Promise<void> {
+  try {
+    await Deno.stat(file);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return;
+    throw error;
+  }
+  throw new Error(`${file} unexpectedly exists`);
+}

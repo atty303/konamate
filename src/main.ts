@@ -11,16 +11,13 @@ import {
 } from "./games.ts";
 import {
   associateCommand,
-  configCommand,
   execCommand,
   obsWebSocketProxyCommand,
   profileCommand,
-  registryCommand,
   runCommand,
 } from "./command.ts";
-import { APP_NAME, configDir } from "./app.ts";
+import { APP_NAME } from "./app.ts";
 import $ from "@david/dax";
-import * as path from "@std/path";
 import versionJson from "../version.json" with { type: "json" };
 import { authCommand } from "./browser.ts";
 import { controllerCommand } from "./controller.ts";
@@ -32,9 +29,7 @@ async function main(): Promise<void> {
   const gameOperations = new Set([
     "games",
     "run",
-    "config",
     "profile",
-    "registry",
     "associate",
     "exec",
     "obs-websocket-proxy",
@@ -43,12 +38,7 @@ async function main(): Promise<void> {
   const shouldLoadUserGames = gameOperations.has(Deno.args[0]);
   let userGames: GameDefinition[] = [];
   if (shouldLoadUserGames) {
-    const userGamesPath = path.join(configDir(), "games.json");
-    try {
-      userGames = await readGameDefinitions(userGamesPath);
-    } catch (error) {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
-    }
+    userGames = await readGameDefinitions();
   }
   const games = mergeGameDefinitions(defaultGames, userGames);
   const gamesById = new Map(games.map((game) => [game.id, game]));
@@ -99,9 +89,7 @@ async function main(): Promise<void> {
     .command("auth", authCommand)
     .command("controller", controllerCommand)
     .command("secret", secretCommand)
-    .command("config", configCommand(resolveGame))
     .command("profile", profileCommand(resolveGame))
-    .command("registry", registryCommand(resolveGame))
     .command("associate", associateCommand(resolveGame))
     .command("exec", execCommand(resolveGame))
     .command("run", runCommand(resolveGame))

@@ -6,6 +6,8 @@ import {
   resolveBrowserExecutable,
   writeSettings,
 } from "../src/settings.ts";
+import { readConfigFile, writeConfigFile } from "../src/config_file.ts";
+import { emptyKonamateConfig } from "../src/models.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -21,7 +23,7 @@ async function createExecutable(filePath: string): Promise<void> {
 
 Deno.test("persists and validates application settings", async () => {
   const directory = await Deno.makeTempDir();
-  const file = `${directory}/config.json`;
+  const file = `${directory}/config.toml`;
   try {
     await writeSettings({ browser: "/usr/bin/chromium" }, file);
     assert(
@@ -29,7 +31,7 @@ Deno.test("persists and validates application settings", async () => {
       "browser setting was not preserved",
     );
 
-    await Deno.writeTextFile(file, JSON.stringify({ browser: "", extra: 1 }));
+    await Deno.writeTextFile(file, '[settings]\nbrowser = ""\nextra = 1\n');
     let rejected = false;
     try {
       await readSettings(file);
@@ -37,6 +39,40 @@ Deno.test("persists and validates application settings", async () => {
       rejected = true;
     }
     assert(rejected, "invalid settings were accepted");
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("settings writes preserve games and profiles", async () => {
+  const directory = await Deno.makeTempDir();
+  const file = `${directory}/config.toml`;
+  try {
+    const config = emptyKonamateConfig();
+    config.games.sample = {
+      id: "sample",
+      name: "Sample",
+      urlScheme: "sample.game",
+      loginUrl: "https://example.com/login",
+      registryKey: "Software\\Sample",
+      common: { env: {}, registry: [] },
+      profiles: {
+        launcher: { command: "run", env: {}, registry: [] },
+      },
+      runProfile: "launcher",
+    };
+    config.profiles.sample = {
+      common: { env: {}, registry: [] },
+      profiles: {
+        launcher: { command: "run", env: {}, registry: [] },
+      },
+      runProfile: "launcher",
+    };
+    await writeConfigFile(config, file);
+    await writeSettings({ browser: "/usr/bin/chromium" }, file);
+    const updated = await readConfigFile(file);
+    assert(updated.games.sample !== undefined, "games were discarded");
+    assert(updated.profiles.sample !== undefined, "profiles were discarded");
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
@@ -91,7 +127,7 @@ Deno.test("detects compatible executable by browser priority", async () => {
 Deno.test("detects and persists a browser when settings are missing", async () => {
   const root = await Deno.makeTempDir();
   const bin = `${root}/bin`;
-  const file = `${root}/config/config.json`;
+  const file = `${root}/config/config.toml`;
   try {
     await createExecutable(`${bin}/com.brave.Browser`);
     const browser = await resolveBrowserExecutable(undefined, {
@@ -110,10 +146,10 @@ Deno.test("detects and persists a browser when settings are missing", async () =
 
 Deno.test("does not replace invalid settings or create missing detection", async () => {
   const root = await Deno.makeTempDir();
-  const invalidFile = `${root}/invalid.json`;
-  const missingFile = `${root}/missing/config.json`;
+  const invalidFile = `${root}/invalid.toml`;
+  const missingFile = `${root}/missing/config.toml`;
   try {
-    await Deno.writeTextFile(invalidFile, JSON.stringify({ browser: "" }));
+    await Deno.writeTextFile(invalidFile, '[settings]\nbrowser = ""\n');
     for (const file of [invalidFile, missingFile]) {
       let rejected = false;
       try {
@@ -128,7 +164,7 @@ Deno.test("does not replace invalid settings or create missing detection", async
     }
     assert(
       (await Deno.readTextFile(invalidFile)) ===
-        JSON.stringify({ browser: "" }),
+        '[settings]\nbrowser = ""\n',
       "invalid settings were replaced",
     );
     let missing = false;

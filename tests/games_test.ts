@@ -6,7 +6,10 @@ const game = {
   urlScheme: "test.game",
   loginUrl: "https://example.com/login",
   registryKey: "Software\\Test",
-  profiles: { launcher: { command: "run %u" } },
+  common: { env: {}, registry: [] },
+  profiles: {
+    launcher: { command: "run %u", env: {}, registry: [] },
+  },
   runProfile: "launcher",
 };
 
@@ -17,7 +20,10 @@ function assert(condition: unknown, message: string): asserts condition {
 Deno.test("validates game definitions and string metadata", () => {
   const parsed = GameDefinitionSchema.parse({ ...game, productCode: "ABC" });
   assert(parsed.productCode === "ABC", "string metadata was not retained");
-  assert(parsed.registry.length === 0, "default registry was not added");
+  assert(
+    parsed.common.registry.length === 0,
+    "common registry was not retained",
+  );
 
   const invalidMetadata = GameDefinitionSchema.safeParse({
     ...game,
@@ -30,7 +36,7 @@ Deno.test("INFINITAS defaults include Wine registry declarations", async () => {
   const { defaultGames } = await import("../src/games.ts");
   const infinitas = defaultGames.find((game) => game.id === "infinitas");
   assert(
-    infinitas?.registry.length === 4,
+    infinitas?.common.registry.length === 4,
     "INFINITAS registry defaults are missing",
   );
 });
@@ -57,7 +63,7 @@ Deno.test("rejects a missing run profile", () => {
     !GameDefinitionSchema.safeParse({
       ...game,
       profiles: Object.fromEntries([
-        ["__proto__", { command: "run" }],
+        ["__proto__", { command: "run", env: {}, registry: [] }],
       ]),
       runProfile: "__proto__",
     }).success,

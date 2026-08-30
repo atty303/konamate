@@ -79,11 +79,18 @@ state to the new locations:
 konamate migrate
 ```
 
-Existing files in the new locations take precedence, and legacy data is left
-unchanged. Keyring entries are copied from the legacy service when first used.
-Wine prefixes and desktop URL associations are not migrated. If you use the
-optional desktop integration, run `konamate associate <game>` again for each
-configured game, then remove the old executable when it is no longer needed.
+The command also converts `config.json`, `games.json`, and per-game JSON files
+into the unified `~/.config/konamate/config.toml`. It first creates
+`*.pre-unified-toml-migration.json` backups, verifies the new TOML, and only
+then removes the original JSON files. It can resume an interrupted conversion;
+conflicting backups or a different existing TOML stop the migration without
+overwriting either version. Normal commands refuse a mixed JSON/TOML state and
+ask you to run `konamate migrate` again.
+
+Keyring entries are copied from the legacy service when first used. Wine
+prefixes and desktop URL associations are not migrated. If you use the optional
+desktop integration, run `konamate associate <game>` again for each configured
+game, then remove the old executable when it is no longer needed.
 
 ## Minimal steps to launch the games
 
@@ -94,8 +101,8 @@ when a browser command is first used. To detect and save it in advance, run:
 konamate settings --detect
 ```
 
-Use `konamate settings --browser /path/to/chromium` when automatic detection does
-not find the intended browser.
+Use `konamate settings --browser /path/to/chromium` when automatic detection
+does not find the intended browser.
 
 Register a passkey with the virtual authenticator. Complete the registration on
 the KONAMI account page opened by the command:
@@ -122,7 +129,8 @@ To persist the sink, you can configure PipeWire configuration.
 1. Run the following command to configure and create the wine prefix:
 
 ```bash
-konamate config infinitas --env.PROTONPATH=GE-Proton10-9 --env.PULSE_SINK=konamate-sink
+konamate profile env set infinitas common PROTONPATH GE-Proton10-9
+konamate profile env set infinitas common PULSE_SINK konamate-sink
 konamate exec infinitas umu-run wineboot --init
 ```
 
@@ -162,7 +170,8 @@ konamate run infinitas
 1. Run the following command to configure and create the wine prefix:
 
 ```bash
-konamate config sdvx --env.PROTONPATH=GE-Proton10-9 --env.PULSE_SINK=konamate-sink
+konamate profile env set sdvx common PROTONPATH GE-Proton10-9
+konamate profile env set sdvx common PULSE_SINK konamate-sink
 konamate exec sdvx umu-run wineboot --init
 ```
 
@@ -194,7 +203,8 @@ konamate run sdvx
 1. Run the following command to configure the wine prefix:
 
 ```bash
-konamate config gitadora --env.PROTONPATH=GE-Proton10-9 --env.PULSE_SINK=konamate-sink
+konamate profile env set gitadora common PROTONPATH GE-Proton10-9
+konamate profile env set gitadora common PULSE_SINK konamate-sink
 konamate exec gitadora umu-run wineboot --init
 ```
 
@@ -224,8 +234,8 @@ You can explore the available commands by specifying the `--help` option.
 This command displays or stores application-wide settings. With no options it
 only displays the saved settings; in a new environment, it displays an empty
 object. Use `--detect` to find a compatible browser and save its path, or
-`--browser /path/to/chromium` to save a path explicitly.
-Browser-related commands also accept `--browser` as a one-time override.
+`--browser /path/to/chromium` to save a path explicitly. Browser-related
+commands also accept `--browser` as a one-time override.
 
 When no browser is configured, browser-related commands search `PATH`, the user
 Flatpak exports, and the system Flatpak exports for Google Chrome, Chromium,
@@ -237,63 +247,69 @@ future use. An existing setting is never replaced automatically; use
 
 This command lists the available games that can be managed by this tool.
 
-You can add new games by creating a game definition file in the
-`~/.config/konamate/games.json` file. Format of the game definition file is as
-`defaultGames` in the [src/games.ts](src/games.ts). Additional properties used
-by `%{key}` placeholders must have string values. Invalid JSON and values that
-do not match the game definition schema are reported with their field path.
+You can add or override games in the `games` table of
+`~/.config/konamate/config.toml`. Built-in definitions are not written to the
+file. Additional string properties can be referenced by `%{key}` placeholders.
+Invalid TOML and values that do not match the schema are reported with their
+file and field path.
+
+### Unified configuration
+
+Application settings, custom game definitions, and initialized game profiles are
+stored together in `~/.config/konamate/config.toml`:
+
+```toml
+[settings]
+browser = "/usr/bin/chromium"
+
+[games.custom]
+name = "Custom Game"
+url_scheme = "custom.game"
+login_url = "https://example.com/login"
+registry_key = "Software\\Custom Game"
+run_profile = "launcher"
+
+[games.custom.common]
+registry = []
+
+[games.custom.common.env]
+
+[games.custom.profiles.launcher]
+command = "run %u"
+registry = []
+
+[games.custom.profiles.launcher.env]
+
+[profiles.infinitas]
+run_profile = "launcher"
+
+[profiles.infinitas.common]
+registry = []
+
+[profiles.infinitas.common.env]
+PROTONPATH = "GE-Proton10-9"
+
+[profiles.infinitas.entries.launcher]
+command = "umu-run %r\\launcher\\modules\\bm2dx_launcher.exe %u"
+registry = []
+
+[profiles.infinitas.entries.launcher.env]
+```
+
+CLI writes reserialize the complete file into canonical TOML, so comments, blank
+lines, and table order are not preserved. New configuration and migration backup
+files are owner-readable and owner-writable only. Writes use an atomic rename,
+but concurrent configuration commands are not supported; do not run multiple
+writers at the same time.
 
 ### `konamate controller`
 
 This command reads Linux joystick state for workflow integration.
 `konamate controller read --device <path>` prints the current state as JSON.
 `konamate controller pressed --device <path> [--button <number>]` tests a
-specific button, or any button when `--button` is omitted. It produces no
-output and exits with status 0 when pressed, 1 when not pressed, and 2 when the
-device cannot be read.
-
-### `konamate config <game>`
-
-This command configures the environment for the specified game. If user
-configuration is not initialized, it will create with the default configuration.
-
-- `konamate config infinitas`: Shows the current configuration for the game.
-- `konamate config infinitas --env.NAME=<value>`: Sets the environment variable
-  `NAME` to `value`. Use this to set umu-launcher, Proton or Wine environment
-  variables.
-
-### `konamate registry`
-
-This command stores declarative Wine registry settings per game. `run` and
-`exec` apply saved settings directly to the game's Wine prefix before starting
-the requested command; Wine itself is not started for the update. Registry keys
-must use a complete hive path such as `HKCU\\Software\\Wine\\Explorer`.
-
-- `konamate registry list infinitas`: Shows saved registry declarations.
-- `konamate registry set infinitas HKCU\Software\Wine\Explorer Default --name Desktop`:
-  Saves a string value. Use `--type dword` for an unsigned 32-bit value.
-- `konamate registry delete infinitas HKCU\Software\Wine\Explorer --name Desktop`:
-  Declares the value absent. Applying the declaration deletes the value from the
-  prefix and keeps it absent on future runs.
-- `konamate registry apply infinitas`: Applies declarations immediately.
-
-Konamate does not coordinate registry updates with other Wine processes using
-the same prefix. Do not start another instance with the prefix while one is
-already running.
-
-If a registry file does not exist, Konamate prints a warning and skips the
-declarations for that file. This allows commands such as `wineboot --init` to
-initialize a new Wine prefix before registry declarations are applied.
-
-For example, the following settings match common Winecfg desktop/window-manager
-options without needing any Winecfg-specific command:
-
-```sh
-konamate registry set infinitas HKCU\Software\Wine\Explorer Default --name Desktop
-konamate registry set infinitas HKCU\Software\Wine\Explorer\Desktops 1920x1080 --name Default
-konamate registry set infinitas "HKCU\Software\Wine\X11 Driver" N --name Decorated
-konamate registry set infinitas "HKCU\Software\Wine\X11 Driver" N --name Managed
-```
+specific button, or any button when `--button` is omitted. It produces no output
+and exits with status 0 when pressed, 1 when not pressed, and 2 when the device
+cannot be read.
 
 ### `konamate profile`
 
@@ -303,22 +319,55 @@ game definitions have preconfigured profiles for running the game directly
 without launcher.
 
 - `konamate profile list infinitas`: Lists the available profiles.
-- `konamate profile set infinitas <name> --command <command>`: Creates or
-  replaces a profile.
+- `konamate profile show infinitas game --effective`: Shows a profile after
+  common environment and registry declarations are inherited.
+- `konamate profile set infinitas <name> --command <command>`: Creates a
+  profile. Existing profiles are partially updated; use `--unset-cwd` to remove
+  their working directory.
 - `konamate profile delete infinitas <name>`: Deletes a profile.
 - `konamate profile default infinitas <name>`: Sets the default profile.
 - `konamate profile default infinitas --unset`: Unsets the default profile. If
-  no profile is set as default, selection will be prompted when launching. This
-  is stored as `"runProfile": null` in the game configuration.
+  no profile is set as default, selection will be prompted when launching.
+
+`common` is reserved for settings inherited by every named profile:
+
+- `konamate profile env set infinitas common NAME VALUE` sets a common value.
+- `konamate profile env unset infinitas common NAME` removes a common value.
+- `konamate profile env set infinitas game NAME VALUE` overrides it for one
+  profile.
+- `konamate profile env unset infinitas game NAME` stores a tombstone that
+  removes the variable from the launched process. An empty value passed to
+  `env set` has the same meaning; passing an actual empty environment value is
+  not supported.
+- `konamate profile env inherit infinitas game NAME` removes the override and
+  restores common inheritance.
+
+Registry declarations are managed under the same command. Identity is the
+case-insensitive combination of the complete hive key and value name. A named
+profile declaration replaces the same common declaration; `delete` declares the
+actual Wine value absent, while `remove` removes the profile declaration and
+resumes inheritance.
+
+- `konamate profile registry list infinitas game --effective`
+- `konamate profile registry set infinitas common HKCU\Software\Wine\Explorer Default --name Desktop`
+- `konamate profile registry delete infinitas game HKCU\Software\Wine\Explorer --name Desktop`
+- `konamate profile registry remove infinitas game HKCU\Software\Wine\Explorer --name Desktop`
+- `konamate profile registry apply infinitas game`
+
+Use `--type dword` to store an unsigned 32-bit value. `run` and `exec` apply the
+selected profile's effective registry declarations before starting the command;
+Wine itself is not started for the update. If a registry file does not exist,
+Konamate warns and skips it so `wineboot --init` can initialize a fresh prefix.
+Do not update the same Wine prefix concurrently from another Wine process.
 
 Placeholders are expanded everywhere they occur in a profile command. Values
 inserted by `%u`, `%t`, `%r`, and `%{key}` are shell-escaped before the command
 is executed. Placeholders cannot be nested inside shell expansions such as
 `$()`, `${}`, backticks, or process substitutions.
 
-Configuration files are validated when read. A missing configuration is
-treated as uninitialized, while malformed JSON, invalid fields, and I/O errors
-are reported instead of being replaced with defaults.
+Configuration is validated after TOML parsing and again before writing. Reading
+or launching an uninitialized game uses built-in or custom defaults in memory;
+only profile mutation commands initialize and persist the game configuration.
 
 You can use the following placeholders in the command string:
 
@@ -332,16 +381,19 @@ You can use the following placeholders in the command string:
 
 This command registers the URL scheme for the specified game in the desktop
 environment. It is optional and allows a regular browser to launch the game
-through a desktop entry.
+through a desktop entry. Use `--profile NAME` to select which profile supplies
+the effective `WINEPREFIX` and launch command.
 
 ### `konamate exec <game> <...command>`
 
 This command executes the specified command with configured environment
-variables.
+variables. It resolves `--profile`, the configured default, a sole profile, or
+an interactive terminal selection in the same order as `run`.
 
 - `konamate exec infinitas umu-run winetricks <verbs>`: Runs Winetricks with the
   specified verbs.
-- `konamate exec infinitas umu-run winecfg`: Opens the Wine configuration dialog.
+- `konamate exec infinitas umu-run winecfg`: Opens the Wine configuration
+  dialog.
 
 ### `konamate run <game> [url]`
 
@@ -363,7 +415,7 @@ Linux kernel 6.14 or newer, and becomes available when `/dev/ntsync` exists.
 To enable ntsync, run the following command:
 
 ```bash
-konamate config infinitas --env.PROTON_USE_NTSYNC=1
+konamate profile env set infinitas common PROTON_USE_NTSYNC 1
 ```
 
 ### Use gamescope
@@ -468,7 +520,7 @@ systemctl --user restart pipewire pipewire-pulse
 Configure the game side audio buffer size to reduce latency:
 
 ```bash
-konamate config infinitas --env.PULSE_LATENCY_MSEC=60
+konamate profile env set infinitas common PULSE_LATENCY_MSEC 60
 ```
 
 Lowering the value will reduce latency, but may cause audio dropouts if your
@@ -501,7 +553,7 @@ Maybe Koanste games expect the system to be configured for Japanese locale. If
 you encounter issues, try setting the locale to Japanese may help.
 
 ```bash
-konamate config infinitas --env.LANG=ja_JP.UTF-8
+konamate profile env set infinitas common LANG ja_JP.UTF-8
 ```
 
 ### Launching the game fails
@@ -526,8 +578,8 @@ You need to provide audio output device that configured sample rate to 44100Hz.
 
 Use `mise run check` for the fast formatting, linting, type, and unit test
 checks used during development. Run `mise run test` for all reproducible checks,
-including a compiled binary build. You can also run `mise run build` directly
-to build the CLI for the default architecture.
+including a compiled binary build. You can also run `mise run build` directly to
+build the CLI for the default architecture.
 
 To install the tool from source, run the following command:
 
@@ -546,9 +598,9 @@ starts the installed game through umu/Proton. It is interactive, host-dependent,
 and intentionally separate from `mise run check` and CI.
 
 Use an existing SDVX Wine prefix, but pass it explicitly so the test does not
-read or modify `~/.config/konamate`. Patchright browser storage and the generated
-konamate configuration are isolated in a temporary directory. The existing
-passkey is read from the keyring.
+read or modify `~/.config/konamate`. Patchright browser storage and the
+generated konamate configuration are isolated in a temporary directory. The
+existing passkey is read from the keyring.
 
 ```bash
 mise run test:e2e:linux:sdvx -- \

@@ -1,45 +1,24 @@
-import { z } from "zod";
-import { readJsonFile } from "./json.ts";
-import { RegistryDeclarationsSchema } from "./registry_declaration.ts";
+import { assertNoLegacyFiles, readConfigFile } from "./config_file.ts";
+import {
+  type GameDefinition,
+  GameDefinitionSchema,
+  GameDefinitionsSchema,
+  type GameProfile,
+  GameProfileSchema,
+  ProfileNameSchema,
+} from "./models.ts";
 
-export const GameProfileSchema = z.object({
-  command: z.string().min(1),
-  cwd: z.string().optional(),
-}).strict();
+const profile = (
+  value: Omit<GameProfile, "env" | "registry">,
+): GameProfile => ({ ...value, env: {}, registry: [] });
 
-export type GameProfile = z.infer<typeof GameProfileSchema>;
-
-export const ProfileNameSchema = z.string().min(1).refine(
-  (name) => name !== "__proto__",
-  { message: "Profile name '__proto__' is reserved" },
-);
-
-const GameDefinitionFields = {
-  id: z.string().min(1),
-  name: z.string().min(1),
-  nameLocalized: z.record(z.string(), z.string()).optional(),
-  urlScheme: z.string().min(1),
-  loginUrl: z.url(),
-  registryKey: z.string().min(1),
-  registry: RegistryDeclarationsSchema.default([]),
-  profiles: z.record(ProfileNameSchema, GameProfileSchema),
-  runProfile: ProfileNameSchema,
+export {
+  GameDefinitionSchema,
+  GameDefinitionsSchema,
+  GameProfileSchema,
+  ProfileNameSchema,
 };
-
-export const GameDefinitionSchema = z.object(GameDefinitionFields)
-  .catchall(z.string())
-  .superRefine((game, context) => {
-    if (!Object.hasOwn(game.profiles, game.runProfile)) {
-      context.addIssue({
-        code: "custom",
-        path: ["runProfile"],
-        message: `Profile '${game.runProfile}' does not exist`,
-      });
-    }
-  });
-
-export const GameDefinitionsSchema = z.array(GameDefinitionSchema);
-export type GameDefinition = z.infer<typeof GameDefinitionSchema>;
+export type { GameDefinition, GameProfile };
 
 export const defaultGames = GameDefinitionsSchema.parse([
   {
@@ -49,43 +28,44 @@ export const defaultGames = GameDefinitionsSchema.parse([
     urlScheme: "bm2dxinf",
     loginUrl: "https://p.eagate.573.jp/game/infinitas/2/api/login/login.html",
     registryKey: "Software\\KONAMI\\beatmania IIDX INFINITAS",
-    registry: [
-      {
-        action: "set",
-        key: "HKCU\\Software\\Wine\\Explorer",
-        name: "Desktop",
-        type: "string",
-        value: "Default",
-      },
-      {
-        action: "set",
-        key: "HKCU\\Software\\Wine\\Explorer\\Desktops",
-        name: "Default",
-        type: "string",
-        value: "1920x1080",
-      },
-      {
-        action: "set",
-        key: "HKCU\\Software\\Wine\\X11 Driver",
-        name: "Decorated",
-        type: "string",
-        value: "N",
-      },
-      {
-        action: "set",
-        key: "HKCU\\Software\\Wine\\X11 Driver",
-        name: "Managed",
-        type: "string",
-        value: "N",
-      },
-    ],
+    common: {
+      env: {},
+      registry: [
+        {
+          action: "set",
+          key: "HKCU\\Software\\Wine\\Explorer",
+          name: "Desktop",
+          type: "string",
+          value: "Default",
+        },
+        {
+          action: "set",
+          key: "HKCU\\Software\\Wine\\Explorer\\Desktops",
+          name: "Default",
+          type: "string",
+          value: "1920x1080",
+        },
+        {
+          action: "set",
+          key: "HKCU\\Software\\Wine\\X11 Driver",
+          name: "Decorated",
+          type: "string",
+          value: "N",
+        },
+        {
+          action: "set",
+          key: "HKCU\\Software\\Wine\\X11 Driver",
+          name: "Managed",
+          type: "string",
+          value: "N",
+        },
+      ],
+    },
     profiles: {
-      launcher: {
+      launcher: profile({
         command: "umu-run %r\\launcher\\modules\\bm2dx_launcher.exe %u",
-      },
-      game: {
-        command: "umu-run %r\\game\\app\\bm2dx.exe -t %t",
-      },
+      }),
+      game: profile({ command: "umu-run %r\\game\\app\\bm2dx.exe -t %t" }),
     },
     runProfile: "launcher",
   },
@@ -97,13 +77,12 @@ export const defaultGames = GameDefinitionsSchema.parse([
     loginUrl:
       "http://eagate.573.jp/game/konasteapp/API/login/login.html?game_id=sdvx",
     registryKey: "Software\\KONAMI\\SOUND VOLTEX EXCEED GEAR",
+    common: { env: {}, registry: [] },
     profiles: {
-      launcher: {
+      launcher: profile({
         command: "umu-run %r\\launcher\\modules\\launcher.exe %u",
-      },
-      game: {
-        command: "umu-run %r\\game\\modules\\sv6c.exe -t %t",
-      },
+      }),
+      game: profile({ command: "umu-run %r\\game\\modules\\sv6c.exe -t %t" }),
     },
     runProfile: "launcher",
   },
@@ -115,22 +94,22 @@ export const defaultGames = GameDefinitionsSchema.parse([
     loginUrl:
       "http://eagate.573.jp/game/konasteapp/API/login/login.html?game_id=gitadora",
     registryKey: "Software\\KONAMI\\GITADORA",
+    common: { env: {}, registry: [] },
     profiles: {
-      launcher: {
+      launcher: profile({
         command: "umu-run %r\\launcher\\modules\\launcher.exe %u",
-      },
-      guitarfreaks: {
+      }),
+      guitarfreaks: profile({
         command:
           "umu-run %r\\game\\modules\\gitadora.exe -display0 -fullscreen -fhd -t %t -gf",
         cwd: "%r\\game",
-      },
-      drummania: {
+      }),
+      drummania: profile({
         command:
           "umu-run %r\\game\\modules\\gitadora.exe -display0 -fullscreen -fhd -t %t -dm",
         cwd: "%r\\game",
-      },
+      }),
     },
-
     runProfile: "launcher",
   },
 ]);
@@ -144,6 +123,12 @@ export function mergeGameDefinitions(
   return [...games.values()];
 }
 
-export function readGameDefinitions(filePath: string) {
-  return readJsonFile(filePath, GameDefinitionsSchema);
+export async function readGameDefinitions(): Promise<GameDefinition[]> {
+  const config = await readConfigFile();
+  await assertNoLegacyFiles([
+    ...defaultGames.map((game) => game.id),
+    ...Object.keys(config.games),
+    ...Object.keys(config.profiles),
+  ]);
+  return Object.values(config.games);
 }

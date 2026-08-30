@@ -3,13 +3,18 @@ import xdg from "@404wolf/xdg-portable";
 import { colors } from "@cliffy/ansi/colors";
 import { Command, ValidationError } from "@cliffy/command";
 import {
+  EffectiveProfile,
   GameConfig,
   readConfig,
+  resolveEffectiveProfile,
+  resolveProcessEnvironment,
   resolveRunProfile,
-  tryReadConfig,
+  resolveTarget,
+  setDefaultProfile,
+  updateConfig,
+  updateEnvironment,
   updateProfile,
   updateRegistry,
-  writeConfig,
 } from "./config.ts";
 import $ from "@david/dax";
 import { GameDefinition } from "./games.ts";
@@ -24,6 +29,7 @@ import {
 } from "./launch.ts";
 import { obtainLaunchUrl } from "./browser.ts";
 import { DEFAULT_PASSKEY_NAME, KEYRING_SERVICE } from "./app.ts";
+import { desktopExecLine } from "./desktop_entry.ts";
 
 export type GameResolver = (id: string) => GameDefinition;
 
@@ -35,60 +41,9 @@ function resolveGameArgument(
   return resolveGame(game);
 }
 
-export function configCommand(resolveGame: GameResolver) {
-  return new Command()
-    .description("Set configuration for the game")
-    .option(
-      "--env.* [value:string]",
-      "Set environment variable (empty value to unset)",
-    )
-    .arguments("<game:game>")
-    .example("Show current configuration", "konamate config infinitas")
-    .example(
-      "Set environment variables",
-      "konamate config infinitas --env.WINEPREFIX=/path/to/prefix",
-    )
-    .action(async (options, game) => {
-      const def = resolveGameArgument(resolveGame, game);
-      const defaultConfig = {
-        env: {
-          WINEPREFIX: path.join(
-            Deno.env.get("HOME") ?? "",
-            "Games",
-            "konamate",
-            def.id,
-          ),
-          GAMEID: `umu-${def.id}`,
-        },
-        profiles: def.profiles,
-        registry: def.registry,
-        runProfile: def.runProfile,
-      };
-      const config0: GameConfig = {
-        ...defaultConfig,
-        ...(await tryReadConfig(def) ?? {}),
-      };
-      const env = { ...config0.env };
-      for (const [key, value] of Object.entries(options.env ?? {})) {
-        if (value === true) delete env[key];
-        else if (typeof value === "string") env[key] = value;
-      }
-      const config: GameConfig = {
-        ...config0,
-        env,
-      };
+type RegistryTarget = Pick<EffectiveProfile, "env" | "registry">;
 
-      $.log(JSON.stringify(config, null, 2));
-      if (Object.keys(options).length === 0) {
-        return;
-      }
-
-      await writeConfig(def.id, config);
-      $.logStep(`Configuration for ${def.id} saved`);
-    });
-}
-
-function registryService(config: GameConfig): RegistryService {
+function registryService(config: RegistryTarget): RegistryService {
   const prefix = config.env.WINEPREFIX;
   if (!prefix) {
     throw new Error("WINEPREFIX is not set in the game configuration");
@@ -96,75 +51,9 @@ function registryService(config: GameConfig): RegistryService {
   return new RegistryService(prefix);
 }
 
-async function applyRegistry(config: GameConfig): Promise<void> {
+async function applyRegistry(config: RegistryTarget): Promise<void> {
   if (config.registry.length === 0) return;
   await registryService(config).apply(config.registry);
-}
-
-export function registryCommand(resolveGame: GameResolver) {
-  const list = new Command()
-    .description("List declared registry settings")
-    .arguments("<game:game>")
-    .action(async (_, game) => {
-      const config = await readConfig(resolveGameArgument(resolveGame, game));
-      $.log(JSON.stringify(config.registry, null, 2));
-    });
-
-  const set = new Command()
-    .description("Declare a registry value")
-    .option("--name <name:string>", "Registry value name", { default: "" })
-    .option("--type <type:string>", "Registry value type", {
-      default: "string",
-    })
-    .arguments("<game:game> <key:string> <value:string>")
-    .action(async (options, game, key, value) => {
-      const def = resolveGameArgument(resolveGame, game);
-      const type = options.type;
-      if (type !== "string" && type !== "dword") {
-        throw new Error("Registry type must be string or dword");
-      }
-      const parsedValue = type === "dword" ? Number(value) : value;
-      const config = updateRegistry(await readConfig(def), {
-        action: "set",
-        key,
-        name: options.name,
-        type,
-        value: parsedValue,
-      });
-      await writeConfig(def.id, config);
-      $.logStep(`Registry setting for ${def.id} saved`);
-    });
-
-  const remove = new Command()
-    .description("Declare a registry value absent")
-    .option("--name <name:string>", "Registry value name", { default: "" })
-    .arguments("<game:game> <key:string>")
-    .action(async (options, game, key) => {
-      const def = resolveGameArgument(resolveGame, game);
-      const config = updateRegistry(await readConfig(def), {
-        action: "delete",
-        key,
-        name: options.name,
-      });
-      await writeConfig(def.id, config);
-      $.logStep(`Registry deletion for ${def.id} saved`);
-    });
-
-  const apply = new Command()
-    .description("Apply declared registry settings to the Wine prefix")
-    .arguments("<game:game>")
-    .action(async (_, game) => {
-      const config = await readConfig(resolveGameArgument(resolveGame, game));
-      await applyRegistry(config);
-      $.logStep("Registry settings applied");
-    });
-
-  return new Command()
-    .description("Manage declared Wine registry settings")
-    .command("list", list)
-    .command("set", set)
-    .command("delete", remove)
-    .command("apply", apply);
 }
 
 function profileDescription(): string {
@@ -191,6 +80,16 @@ function logProfiles(config: GameConfig): void {
 }
 
 export function profileCommand(resolveGame: GameResolver) {
+  const definition = (game: unknown) => resolveGameArgument(resolveGame, game);
+  const save = async (
+    game: unknown,
+    update: (config: GameConfig) => GameConfig,
+  ) => {
+    const def = definition(game);
+    await updateConfig(def, update);
+    $.logStep(`Profile configuration for ${def.id} saved`);
+  };
+
   const list = new Command()
     .description("List launch profiles")
     .arguments("<game:game>")
@@ -198,35 +97,48 @@ export function profileCommand(resolveGame: GameResolver) {
       logProfiles(await readConfig(resolveGameArgument(resolveGame, game)));
     });
 
+  const show = new Command()
+    .description("Show stored or effective profile configuration")
+    .option("--effective", "Resolve common settings into the profile")
+    .arguments("<game:game> <profile:string>")
+    .action(async (options, game, profile) => {
+      const config = await readConfig(definition(game));
+      $.log(
+        JSON.stringify(
+          resolveTarget(config, profile, options.effective),
+          null,
+          2,
+        ),
+      );
+    });
+
   const set = new Command()
-    .description("Create or replace a launch profile")
-    .option("--command <command:string>", "Launch command", {
-      required: true,
-    })
+    .description("Create or partially update a launch profile")
+    .option("--command <command:string>", "Launch command")
     .option("--cwd <dir:file>", "Working directory for the profile")
-    .arguments("<game:game> <name:string>")
-    .action(async (options, game, name) => {
-      const def = resolveGameArgument(resolveGame, game);
-      const config = updateProfile(await readConfig(def), {
-        name,
-        command: options.command,
-        cwd: options.cwd,
-      });
-      await writeConfig(def.id, config);
-      $.logStep(`Configuration for ${def.id} saved`);
+    .option("--unset-cwd", "Remove the working directory", {
+      conflicts: ["cwd"],
+    })
+    .arguments("<game:game> <profile:string>")
+    .action(async (options, game, profile) => {
+      await save(game, (config) =>
+        updateProfile(config, {
+          name: profile,
+          command: options.command,
+          cwd: options.cwd,
+          unsetCwd: options.unsetCwd,
+        }));
     });
 
   const deleteProfile = new Command()
     .description("Delete a launch profile")
-    .arguments("<game:game> <name:string>")
-    .action(async (_, game, name) => {
-      const def = resolveGameArgument(resolveGame, game);
-      const config = updateProfile(await readConfig(def), {
-        name,
-        delete: true,
-      });
-      await writeConfig(def.id, config);
-      $.logStep(`Configuration for ${def.id} saved`);
+    .arguments("<game:game> <profile:string>")
+    .action(async (_, game, profile) => {
+      await save(game, (config) =>
+        updateProfile(config, {
+          name: profile,
+          delete: true,
+        }));
     });
 
   const defaultProfile = new Command()
@@ -239,26 +151,128 @@ export function profileCommand(resolveGame: GameResolver) {
           "Provide either a profile name or --unset",
         );
       }
-      const def = resolveGameArgument(resolveGame, game);
-      const config = updateProfile(await readConfig(def), {
-        name,
-        setDefault: true,
-      });
-      await writeConfig(def.id, config);
-      $.logStep(`Configuration for ${def.id} saved`);
+      await save(game, (config) => setDefaultProfile(config, name ?? null));
     });
+
+  const envSet = new Command()
+    .description("Set a common or profile environment variable")
+    .arguments("<game:game> <profile:string> <name:string> <value:string>")
+    .action(async (_, game, profile, name, value) => {
+      await save(
+        game,
+        (config) => updateEnvironment(config, profile, name, "set", value),
+      );
+    });
+  const envUnset = new Command()
+    .description("Unset an environment variable in a profile")
+    .arguments("<game:game> <profile:string> <name:string>")
+    .action(async (_, game, profile, name) => {
+      await save(
+        game,
+        (config) => updateEnvironment(config, profile, name, "unset"),
+      );
+    });
+  const envInherit = new Command()
+    .description("Remove a profile override and inherit the common value")
+    .arguments("<game:game> <profile:string> <name:string>")
+    .action(async (_, game, profile, name) => {
+      await save(
+        game,
+        (config) => updateEnvironment(config, profile, name, "inherit"),
+      );
+    });
+  const env = new Command()
+    .description("Manage profile environment variables")
+    .command("set", envSet)
+    .command("unset", envUnset)
+    .command("inherit", envInherit);
+
+  const registryList = new Command()
+    .description("List stored or effective registry declarations")
+    .option("--effective", "Include inherited common declarations")
+    .arguments("<game:game> <profile:string>")
+    .action(async (options, game, profile) => {
+      const config = await readConfig(definition(game));
+      const target = resolveTarget(config, profile, options.effective);
+      $.log(JSON.stringify(target.registry, null, 2));
+    });
+  const registrySet = new Command()
+    .description("Declare a registry value")
+    .option("--name <name:string>", "Registry value name", { default: "" })
+    .option("--type <type:string>", "Registry value type", {
+      default: "string",
+    })
+    .arguments("<game:game> <profile:string> <key:string> <value:string>")
+    .action(async (options, game, profile, key, value) => {
+      if (options.type !== "string" && options.type !== "dword") {
+        throw new Error("Registry type must be string or dword");
+      }
+      const type = options.type;
+      await save(game, (config) =>
+        updateRegistry(config, profile, {
+          action: "set",
+          key,
+          name: options.name,
+          type,
+          value: type === "dword" ? Number(value) : value,
+        }));
+    });
+  const registryDelete = new Command()
+    .description("Declare a registry value absent")
+    .option("--name <name:string>", "Registry value name", { default: "" })
+    .arguments("<game:game> <profile:string> <key:string>")
+    .action(async (options, game, profile, key) => {
+      await save(game, (config) =>
+        updateRegistry(config, profile, {
+          action: "delete",
+          key,
+          name: options.name,
+        }));
+    });
+  const registryRemove = new Command()
+    .description("Remove a declaration and inherit the common declaration")
+    .option("--name <name:string>", "Registry value name", { default: "" })
+    .arguments("<game:game> <profile:string> <key:string>")
+    .action(async (options, game, profile, key) => {
+      await save(game, (config) =>
+        updateRegistry(config, profile, undefined, {
+          key,
+          name: options.name,
+        }));
+    });
+  const registryApply = new Command()
+    .description("Apply effective registry declarations")
+    .arguments("<game:game> <profile:string>")
+    .action(async (_, game, profile) => {
+      const config = await readConfig(definition(game));
+      const target = profile === "common"
+        ? config.common
+        : resolveEffectiveProfile(config, profile);
+      await applyRegistry(target);
+      $.logStep("Registry settings applied");
+    });
+  const registry = new Command()
+    .description("Manage profile registry declarations")
+    .command("list", registryList)
+    .command("set", registrySet)
+    .command("delete", registryDelete)
+    .command("remove", registryRemove)
+    .command("apply", registryApply);
 
   return new Command()
     .description(profileDescription())
     .command("list", list)
+    .command("show", show)
     .command("set", set)
     .command("delete", deleteProfile)
-    .command("default", defaultProfile);
+    .command("default", defaultProfile)
+    .command("env", env)
+    .command("registry", registry);
 }
 
 async function extractIcon(
   def: GameDefinition,
-  config: GameConfig,
+  config: EffectiveProfile,
   dest: string,
 ): Promise<void> {
   const iconValue = await registryService(config).readLocalMachine(
@@ -290,6 +304,7 @@ export function associateCommand(resolveGame: GameResolver) {
   return new Command()
     .description("Associate a game URL scheme with the game")
     .option("--self-path <path:file>", "Path to the this executable")
+    .option("--profile <name:string>", "Launch profile used to locate the icon")
     .arguments("<game:game>")
     .action(async (options, game) => {
       const def = resolveGameArgument(resolveGame, game);
@@ -302,13 +317,21 @@ export function associateCommand(resolveGame: GameResolver) {
       }
 
       const config = await readConfig(def);
+      const selected = await resolveRunProfile(
+        config,
+        options.profile,
+        Deno.stdin.isTerminal() && Deno.stdout.isTerminal()
+          ? selectProfileInTerminal
+          : undefined,
+      );
+      const effective = resolveEffectiveProfile(config, selected);
 
       $.logStep(`Extracting icon for ${def.id}`);
       const iconName = await (async () => {
         try {
           const dest = path.join(xdg.data(), "icons", `${def.id}.png`);
           await $.path(dest).parent()?.ensureDir();
-          await extractIcon(def, config, dest);
+          await extractIcon(def, effective, dest);
           return def.id;
         } catch (err) {
           $.logWarn(
@@ -334,7 +357,7 @@ ${
             : ""
         }
 Comment=Play ${def.name} on Konaste
-Exec=${selfPath} run ${def.id} --notify %u
+Exec=${desktopExecLine(selfPath, def.id, selected)}
 Type=Application
 Categories=Game;
 Terminal=false
@@ -365,12 +388,23 @@ ${iconName ? `Icon=${iconName}` : ""}`;
 export function execCommand(resolveGame: GameResolver) {
   return new Command()
     .description("Run a command in same environment as the `run` subcommand")
+    .option("--profile <name:string>", "Launch profile to use")
     .arguments("<game:game> <...command:string>")
-    .action(async (_, game, ...command) => {
+    .action(async (options, game, ...command) => {
       const def = resolveGameArgument(resolveGame, game);
       const config = await readConfig(def);
-      await applyRegistry(config);
-      await $.raw`${command.join(" ")}`.env(config.env).printCommand();
+      const selected = await resolveRunProfile(
+        config,
+        options.profile,
+        Deno.stdin.isTerminal() && Deno.stdout.isTerminal()
+          ? selectProfileInTerminal
+          : undefined,
+      );
+      const effective = resolveEffectiveProfile(config, selected);
+      await applyRegistry(effective);
+      await $.raw`${command.join(" ")}`.env(
+        resolveProcessEnvironment(config, selected),
+      ).printCommand();
     });
 }
 
@@ -423,7 +457,6 @@ export function runCommand(resolveGame: GameResolver) {
     .action(async (options, game, url) => {
       const def = resolveGameArgument(resolveGame, game);
       const config = await readConfig(def);
-      await applyRegistry(config);
       const selector = options.notify
         ? (names: string[]) => selectProfileWithNotification(def, names)
         : Deno.stdin.isTerminal() && Deno.stdout.isTerminal()
@@ -434,6 +467,8 @@ export function runCommand(resolveGame: GameResolver) {
         options.profile,
         selector,
       );
+      const profile = resolveEffectiveProfile(config, selectedProfileName);
+      await applyRegistry(profile);
 
       if (!url) {
         url = await obtainLaunchUrl({
@@ -445,7 +480,7 @@ export function runCommand(resolveGame: GameResolver) {
         });
       }
 
-      $.logStep(`Launching ${def.id} with URL: ${url}`);
+      $.logStep(`Launching ${def.id} with profile ${selectedProfileName}`);
 
       if (options.notify) {
         await $`notify-send --app-name ${def.name} --urgency=low --icon=${def.id} --expire-time=5000 "Launching ${def.name}"`
@@ -454,17 +489,10 @@ export function runCommand(resolveGame: GameResolver) {
 
       const launchUrl = parseLaunchUrl(url, def.urlScheme);
 
-      const profile = config.profiles[selectedProfileName];
-      if (!profile) {
-        throw new Error(
-          `Run profile '${selectedProfileName}' not found for ${def.id}`,
-        );
-      }
-
       const installDir = await (async () => {
         if (!needsInstallDir(profile.command, profile.cwd)) return undefined;
 
-        const value = await registryService(config).readLocalMachine(
+        const value = await registryService(profile).readLocalMachine(
           def.registryKey,
           "InstallDir",
         );
@@ -488,10 +516,12 @@ export function runCommand(resolveGame: GameResolver) {
       const cwd = resolveProfileCwd(
         profile.cwd,
         installDir,
-        config.env.WINEPREFIX,
+        profile.env.WINEPREFIX,
       );
 
-      const cmd0 = $.raw`${command}`.env(config.env).printCommand();
+      const cmd0 = $.raw`${command}`.env(
+        resolveProcessEnvironment(config, selectedProfileName),
+      ).printCommand();
       const cmd = cwd ? cmd0.cwd(cwd) : cmd0;
       await cmd;
     });
@@ -533,11 +563,20 @@ export function obsWebSocketProxyCommand(resolveGame: GameResolver) {
       default: 4456,
     })
     .option("-v, --verbose", "Enable verbose logging")
+    .option("--profile <name:string>", "Launch profile to use")
     .arguments("<game:game>")
     .action(async (options, game) => {
       const def = resolveGameArgument(resolveGame, game);
       const config = await readConfig(def);
-      if (!config.env.WINEPREFIX) {
+      const selected = await resolveRunProfile(
+        config,
+        options.profile,
+        Deno.stdin.isTerminal() && Deno.stdout.isTerminal()
+          ? selectProfileInTerminal
+          : undefined,
+      );
+      const effective = resolveEffectiveProfile(config, selected);
+      if (!effective.env.WINEPREFIX) {
         throw new Error(
           `WINEPREFIX is not set in the configuration for ${def.id}`,
         );
@@ -549,7 +588,10 @@ export function obsWebSocketProxyCommand(resolveGame: GameResolver) {
           const request = JSON.parse(data);
           if (request?.d?.requestType === "SaveSourceScreenshot") {
             const winePath = request.d?.requestData?.imageFilePath;
-            const unixPath = winePathToUnix(winePath, config.env.WINEPREFIX);
+            const unixPath = winePathToUnix(
+              winePath,
+              effective.env.WINEPREFIX,
+            );
             request.d.requestData.imageFilePath = unixPath;
           }
           return Promise.resolve(JSON.stringify(request));

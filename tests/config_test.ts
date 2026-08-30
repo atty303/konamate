@@ -1,18 +1,34 @@
 import {
-  GameConfig,
+  type GameConfig,
   GameConfigSchema,
-  normalizeConfig,
+  mergeRegistryDeclarations,
+  resolveEffectiveProfile,
   resolveRunProfile,
+  setDefaultProfile,
+  updateEnvironment,
   updateProfile,
   updateRegistry,
 } from "../src/config.ts";
-import { defaultGames } from "../src/games.ts";
 
-const game = defaultGames[0];
+const declaration = {
+  action: "set" as const,
+  key: "HKCU\\Software\\Wine\\Explorer",
+  name: "Desktop",
+  type: "string" as const,
+  value: "Common",
+};
 const config: GameConfig = {
-  env: { WINEPREFIX: "/tmp/prefix" },
-  profiles: { launcher: { command: "run %u" } },
-  registry: [],
+  common: {
+    env: { WINEPREFIX: "/tmp/prefix", SHARED: "common", REMOVED: "common" },
+    registry: [declaration],
+  },
+  profiles: {
+    launcher: {
+      command: "run %u",
+      env: { SHARED: "profile", REMOVED: "" },
+      registry: [],
+    },
+  },
   runProfile: "launcher",
 };
 
@@ -31,196 +47,142 @@ function assertThrows(action: () => unknown, pattern: RegExp): void {
   throw new Error("expected an error");
 }
 
-Deno.test("normalizes legacy config and preserves an explicit null", () => {
-  const legacy = normalizeConfig(
-    { env: config.env, profiles: config.profiles },
-    game,
+Deno.test("resolves inherited environment and registry declarations", () => {
+  const effective = resolveEffectiveProfile(config, "launcher");
+  assert(
+    effective.env.SHARED === "profile",
+    "profile env did not override common",
   );
-  assert(legacy.runProfile === game.runProfile, "default was not restored");
+  assert(!Object.hasOwn(effective.env, "REMOVED"), "empty env was not unset");
+  assert(effective.registry.length === 1, "common registry was not inherited");
 
-  const withoutDefault = normalizeConfig({ ...config, runProfile: null }, game);
-  assert(withoutDefault.runProfile === null, "explicit null was not preserved");
-  assert(legacy.registry.length === 0, "legacy registry was not normalized");
-});
-
-Deno.test("registry declarations reject invalid keys and replace case-insensitively", () => {
-  const withValue = updateRegistry(config, {
-    action: "set",
-    key: "HKCU\\Software\\Wine\\Explorer",
-    name: "Desktop",
-    type: "string",
-    value: "Default",
-  });
-  const replaced = updateRegistry(withValue, {
-    action: "delete",
-    key: "hkcu\\software\\wine\\explorer",
-    name: "desktop",
-  });
-  assert(replaced.registry.length === 1, "registry value was not replaced");
+  const overridden = mergeRegistryDeclarations(config.common.registry, [{
+    ...declaration,
+    value: "Profile",
+  }]);
+  assert(overridden.length === 1, "registry identity was duplicated");
   assert(
-    replaced.registry[0].action === "delete",
-    "delete declaration was lost",
-  );
-  assert(
-    !GameConfigSchema.safeParse({
-      ...config,
-      registry: [{
-        action: "set",
-        key: "Software\\Wine\\Explorer",
-        name: "Desktop",
-        type: "string",
-        value: "Default",
-      }],
-    }).success,
-    "relative registry key was accepted",
-  );
-  assert(
-    !GameConfigSchema.safeParse({
-      ...config,
-      registry: [{
-        action: "set",
-        key: "HKCU\\Software\\Wine\\Explorer\nBroken",
-        name: "Desktop",
-        type: "string",
-        value: "Default",
-      }],
-    }).success,
-    "registry key with newline was accepted",
-  );
-  assert(
-    !GameConfigSchema.safeParse({
-      ...config,
-      registry: [{
-        action: "set",
-        key: "HKCU\\Software\\Wine\\Explorer",
-        name: "Flags",
-        type: "dword",
-        value: 0x1_0000_0000,
-      }],
-    }).success,
-    "out-of-range DWORD was accepted",
-  );
-  assert(
-    !GameConfigSchema.safeParse({
-      ...config,
-      registry: [{
-        action: "set",
-        key: "HKCU\\Software\\Wine\\Explorer",
-        name: "Desktop\nBroken",
-        type: "string",
-        value: "Default",
-      }],
-    }).success,
-    "registry value name with newline was accepted",
-  );
-  assert(
-    !GameConfigSchema.safeParse({
-      ...config,
-      registry: [{
-        action: "set",
-        key: "HKCU\\Software\\Wine\\Explorer",
-        name: "Desktop",
-        type: "string",
-        value: "Default\0Broken",
-      }],
-    }).success,
-    "registry string value with NUL was accepted",
+    overridden[0].action === "set" && overridden[0].value === "Profile",
+    "profile registry did not override common",
   );
 });
 
-Deno.test("rejects invalid config fields and profile references", () => {
+Deno.test("updates environment with unset and inherit semantics", () => {
+  const unset = updateEnvironment(config, "launcher", "SHARED", "unset");
+  assert(unset.profiles.launcher.env.SHARED === "", "unset tombstone missing");
+  const inherited = updateEnvironment(unset, "launcher", "SHARED", "inherit");
   assert(
-    !GameConfigSchema.safeParse({ ...config, extra: true }).success,
-    "unknown config field was accepted",
+    !Object.hasOwn(inherited.profiles.launcher.env, "SHARED"),
+    "inherit retained the override",
   );
-  const invalid = GameConfigSchema.safeParse({
-    ...config,
-    runProfile: "missing",
-  });
-  assert(!invalid.success, "missing run profile was accepted");
+  const commonUnset = updateEnvironment(config, "common", "SHARED", "unset");
   assert(
-    invalid.error.issues[0]?.path.join(".") === "runProfile",
-    "error did not identify runProfile",
+    !Object.hasOwn(commonUnset.common.env, "SHARED"),
+    "common unset retained the key",
   );
-  assert(
-    !GameConfigSchema.safeParse({
-      env: config.env,
-      profiles: {},
-      runProfile: "toString",
-    }).success,
-    "prototype property was accepted as a profile",
+  assertThrows(
+    () => updateEnvironment(config, "common", "SHARED", "inherit"),
+    /cannot inherit/,
   );
 });
 
-Deno.test("updates profiles without mutating the source config", () => {
-  const added = updateProfile(config, {
+Deno.test("updates and removes profile registry overrides", () => {
+  const overridden = updateRegistry(config, "launcher", {
+    ...declaration,
+    value: "Profile",
+  });
+  assert(
+    resolveEffectiveProfile(overridden, "launcher").registry[0].action ===
+      "set",
+    "registry override was not effective",
+  );
+  const removed = updateRegistry(
+    overridden,
+    "launcher",
+    undefined,
+    declaration,
+  );
+  assert(
+    JSON.stringify(resolveEffectiveProfile(removed, "launcher").registry[0]) ===
+      JSON.stringify(declaration),
+    "removing override did not restore common declaration",
+  );
+  assertThrows(
+    () => updateRegistry(config, "common", undefined, declaration),
+    /cannot inherit/,
+  );
+});
+
+Deno.test("partially updates profiles and reserves common", () => {
+  const added = updateProfile(config, { name: "game", command: "play %t" });
+  const withCwd = updateProfile(added, { name: "game", cwd: "/tmp/game" });
+  assert(withCwd.profiles.game.cwd === "/tmp/game", "cwd was not updated");
+  const withoutCwd = updateProfile(withCwd, {
     name: "game",
-    command: "play %t",
-    setDefault: true,
+    unsetCwd: true,
   });
-  assert(added.runProfile === "game", "new default was not selected");
-  assert(!("game" in config.profiles), "source config was mutated");
-
-  const deleted = updateProfile(added, { name: "game", delete: true });
-  assert(deleted.runProfile === null, "deleting the default did not clear it");
-  assert(!("game" in deleted.profiles), "profile was not deleted");
-});
-
-Deno.test("validates profile operations", () => {
+  assert(withoutCwd.profiles.game.cwd === undefined, "cwd was not removed");
   assertThrows(
-    () => updateProfile(config, { name: "missing", setDefault: true }),
-    /does not exist/,
+    () => updateProfile(config, { name: "new", cwd: "/tmp" }),
+    /--command is required/,
   );
   assertThrows(
-    () => updateProfile(config, { name: "constructor", setDefault: true }),
-    /does not exist/,
+    () => updateProfile(config, { name: "new" }),
+    /Provide --command/,
+  );
+  assertThrows(
+    () => updateProfile(config, { name: "common", command: "run" }),
+    /not a launch profile/,
   );
   assertThrows(
     () => updateProfile(config, { name: "__proto__", command: "run" }),
     /reserved/,
   );
   assertThrows(
-    () => updateProfile(config, { cwd: "/tmp" }),
-    /profile name is required/,
+    () => setDefaultProfile(config, "common"),
+    /cannot be the default/,
+  );
+  const prototypeName = updateProfile(config, {
+    name: "toString",
+    command: "run",
+  });
+  assert(
+    Object.hasOwn(prototypeName.profiles, "toString"),
+    "prototype-named profile was not created",
+  );
+  const deleted = updateProfile(prototypeName, {
+    name: "toString",
+    delete: true,
+  });
+  assert(
+    !Object.hasOwn(deleted.profiles, "toString"),
+    "prototype-named profile was not deleted",
   );
   assertThrows(
-    () => updateProfile(config, { name: "launcher", cwd: "/tmp" }),
-    /requires --command/,
+    () => updateProfile(config, { name: "toString", delete: true }),
+    /does not exist/,
   );
 });
 
-Deno.test("resolves launch profiles deterministically", async () => {
+Deno.test("validates profile references and resolves selection", async () => {
   assert(
-    await resolveRunProfile(config, "launcher") === "launcher",
-    "explicit profile was ignored",
+    !GameConfigSchema.safeParse({ ...config, runProfile: "missing" }).success,
+    "missing default profile was accepted",
   );
   assert(
     await resolveRunProfile(config, undefined) === "launcher",
     "default profile was ignored",
   );
-
-  const selectable: GameConfig = {
-    ...config,
-    profiles: {
-      launcher: { command: "run %u" },
-      game: { command: "run %t" },
-    },
-    runProfile: null,
-  };
+  const selectable = setDefaultProfile(
+    updateProfile(config, { name: "game", command: "play" }),
+    null,
+  );
   assert(
     await resolveRunProfile(
       selectable,
       undefined,
       () => Promise.resolve("game"),
     ) === "game",
-    "interactive profile was ignored",
+    "selected profile was ignored",
   );
-
-  let rejected = false;
-  try {
-    await resolveRunProfile(selectable, undefined);
-  } catch (error) {
-    rejected = error instanceof Error && /--profile/.test(error.message);
-  }
-  assert(rejected, "ambiguous non-interactive selection was accepted");
 });
